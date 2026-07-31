@@ -3,7 +3,7 @@ name: Tag and Release
 on:
   push:
     branches: ['master']
-    paths-ignore: ['README.md']
+    paths-ignore: ['*.md']
 
 permissions:
   contents: write
@@ -20,7 +20,7 @@ jobs:
         uses: start9labs/shared-workflows/.github/actions/setup-build-env@master
 
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -32,6 +32,10 @@ jobs:
           else
             start-cli init-key
           fi
+        shell: bash
+
+      - name: Initialize packaging workspace
+        run: start-cli s9pk init-workspace 2>/dev/null || true
         shell: bash
 
       - name: Build service packages
@@ -73,7 +77,7 @@ jobs:
           git push origin -f "${{ steps.meta.outputs.vtag }}"
 
       - name: Publish versioned release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.meta.outputs.vtag }}
           name: ${{ steps.meta.outputs.title }} ${{ steps.meta.outputs.version }}
