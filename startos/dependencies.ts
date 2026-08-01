@@ -1,126 +1,101 @@
-import { autoconfig as bchnAutoconfig } from 'bitcoin-cash-node-startos/startos/actions/config/autoconfig'
+import { T } from '@start9labs/start-sdk'
 import { autoconfig as bchdAutoconfig } from 'bitcoin-cash-daemon-startos/startos/actions/config/autoconfig'
+import { autoconfig as bchnAutoconfig } from 'bitcoin-cash-node-startos/startos/actions/config/autoconfig'
+import { storeJson } from './fileModels/store.json'
+import { i18n } from './i18n'
 import { sdk } from './sdk'
-import { storeJson } from './file-models/store.json'
+import { NODE_IDS, NodeId } from './utils'
 
-/**
- * Modeled on official Start9 Fulcrum BTC pattern (v2.1.0_7).
- *
- * Key differences from the BTC version:
- *   - We support two backends (BCHN / BCHD) selected at runtime.
- *   - Before creating the active backend's task we purge every
- *     stale replay-ID variant that previous builds may have left behind.
- *   - We do NOT supply an explicit replayId to createTask so the SDK
- *     generates the canonical  `<packageId>:autoconfig`  form.
- */
+/** The task each node carries on Fulcrum's behalf, keyed `<packageId>:<actionId>`. */
+const NODE_TASK_KEYS: Record<NodeId, string> = {
+  bitcoincashd: 'bitcoincashd:autoconfig',
+  bchd: 'bchd:autoconfig',
+  flowee: 'flowee:create-dependent-credential',
+}
+
 export const setDependencies = sdk.setupDependencies(async ({ effects }) => {
   const store = await storeJson.read().const(effects)
-  const selectedNodePackageId = store?.nodePackageId ?? 'bitcoincashd'
-  const nodePackageId = ['bitcoincashd', 'bchd', 'flowee', 'knuth-bch'].includes(selectedNodePackageId)
-    ? selectedNodePackageId
-    : 'bitcoincashd'
+  const node = store?.nodePackageId ?? 'bitcoincashd'
 
-  // ── Purge every known stale task ──────────────────────────────
-  // SDK auto-generates replay IDs as  `<pkgId>:autoconfig`  (colon).
-  // Older builds of this package used the dash variants and a
-  // manual  `select-node`  task.  Wipe them all so nothing ghosts.
+  // A task is keyed `<packageId>:<actionId>`. Drop the ones belonging to the
+  // nodes the user is not on, so none sits in the task list against a node
+  // Fulcrum no longer talks to. The selected node's own key is deliberately
+  // absent: selecting Flowee writes the store, which re-runs this, and clearing
+  // its key here would race the task the action raises straight afterwards.
   await sdk.action.clearTask(
     effects,
-    // canonical colon format (created by SDK when no replayId given)
-    'bitcoincashd:autoconfig',
-    'bchd:autoconfig',
-    'flowee:autoconfig',
-    'knuth-bch:autoconfig',
-    // legacy dash format (created by earlier fulcrum-bch builds)
-    'bitcoincashd-autoconfig',
-    'bchd-autoconfig',
-    'flowee-autoconfig',
-    'knuth-bch-autoconfig',
-    // legacy select-node task
-    'select-node',
-    // stale typo from earlier builds (wrong package ID)
-    'bitcoincash:autoconfig',
+    ...NODE_IDS.filter((id) => id !== node).map((id) => NODE_TASK_KEYS[id]),
   )
 
-  // ── Create only the task for the selected backend ─────────────
-  if (nodePackageId === 'bchd') {
-    await sdk.action.createTask(effects, 'bchd', bchdAutoconfig, 'critical', {
-      input: {
-        kind: 'partial',
-        // @ts-ignore
-        value: {
-          txindex: true,
-          prune: 0,
-          grpcEnabled: true,
+  if (store?.nodeConfirmed) {
+    // Upstream requires an unpruned node with a full transaction index. ZeroMQ
+    // is upstream's recommendation rather than a requirement, so it is applied
+    // when the user runs the task but does not by itself keep the task raised.
+    if (node === 'bitcoincashd') {
+      await sdk.action.createTask(
+        effects,
+        'bitcoincashd',
+        bchnAutoconfig,
+        'critical',
+        {
+          input: {
+            kind: 'partial',
+            accept: [{ prune: 0, txindex: true }],
+            set: { prune: 0, txindex: true, zmqEnabled: true },
+          },
+          when: { condition: 'input-not-matches', once: false },
+          reason: i18n(
+            'Fulcrum indexes every transaction on the chain, which needs an unpruned node and the full transaction index',
+          ),
         },
-      },
-      reason:
-        'Pruning must be disabled and txindex must be enabled for Fulcrum to function properly.',
-      when: { condition: 'input-not-matches', once: false },
-    })
-
-    return {
-      bchd: {
-        kind: 'running',
-        versionRange: '>=0.22.0:0',
-        healthChecks: ['primary'],
-      },
-    } as any
-  }
-
-  if (nodePackageId === 'flowee') {
-    // Fulcrum connects to Flowee via JSON-RPC — no autoconfig needed.
-    // (REST API is required by BCH Explorer, not Fulcrum.)
-    return {
-      flowee: {
-        kind: 'running',
-        versionRange: '>=2026.2.0:0',
-        healthChecks: ['primary'],
-      },
-    } as any
-  }
-
-  if (nodePackageId === 'knuth-bch') {
-    // Knuth does not expose JSON-RPC yet (upstream roadmap, port 8332,
-    // BCHN-compatible when shipped). We declare the dep so users can
-    // pre-select it; Fulcrum will fail at RPC handshake with a clear
-    // error until upstream RPC ships. No autoconfig task: there is
-    // nothing RPC-relevant to configure today.
-    return {
-      'knuth-bch': {
-        kind: 'running',
-        versionRange: '>=0.80.0:0',
-        healthChecks: ['primary'],
-      },
-    } as any
-  }
-
-  // Default: BCHN
-  await sdk.action.createTask(
-    effects,
-    nodePackageId,
-    bchnAutoconfig,
-    'critical',
-    {
-      input: {
-        kind: 'partial',
-        // @ts-ignore
-        value: {
-          txindex: true,
-          zmqEnabled: true,
+      )
+    } else if (node === 'bchd') {
+      await sdk.action.createTask(effects, 'bchd', bchdAutoconfig, 'critical', {
+        input: {
+          kind: 'partial',
+          accept: [{ prune: 0, txindex: true }],
+          set: { prune: 0, txindex: true },
         },
-      },
-      reason:
-        'Pruning must be disabled, txindex and ZMQ must be enabled for Fulcrum to function properly.',
-      when: { condition: 'input-not-matches', once: false },
-    },
-  )
+        when: { condition: 'input-not-matches', once: false },
+        reason: i18n(
+          'Fulcrum indexes every transaction on the chain, which needs an unpruned node and the full transaction index',
+        ),
+      })
+    }
+    // Flowee's task is raised by the Select Node Backend action instead: it
+    // registers a credential, which `input-not-matches` cannot judge (Flowee
+    // keeps only a hash and its action reports no current input), so a task
+    // created here would reappear on every init however many times the user
+    // had already answered it.
+  }
 
-  return {
-    [nodePackageId]: {
+  // Only the binding Fulcrum actually dials has to be up. Fulcrum indexes to
+  // whatever height the node has reached and follows it from there, so gating
+  // on the node's `sync-progress` would keep the service unstartable — and its
+  // own progress unreadable — for the days a fresh chain takes to sync.
+  const nodeDependency: Record<NodeId, T.DependencyRequirement> = {
+    bitcoincashd: {
+      id: 'bitcoincashd',
       kind: 'running',
-      versionRange: '>=29.0.0:0',
+      versionRange: '>=29.0.0:10',
       healthChecks: ['primary'],
     },
-  } as any
+    bchd: {
+      id: 'bchd',
+      kind: 'running',
+      versionRange: '>=0.22.2:0',
+      // BCHD serves RPC over its own TLS with a self-signed certificate, so it
+      // is dialed through its plaintext proxy daemon instead — that proxy, not
+      // the native RPC, is the binding that has to be up.
+      healthChecks: ['rpc-plaintext'],
+    },
+    flowee: {
+      id: 'flowee',
+      kind: 'running',
+      versionRange: '>=2026.5.2:12',
+      healthChecks: ['primary'],
+    },
+  }
+
+  return { [node]: nodeDependency[node] }
 })

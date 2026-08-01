@@ -1,265 +1,235 @@
-<div align="center">
-  <img src="icon.png" alt="Fulcrum BCH logo" width="21%" />
-  <h1>Fulcrum BCH</h1>
-</div>
+<p align="center">
+  <img src="icon.png" alt="Fulcrum BCH Logo" width="21%">
+</p>
 
-> **Upstream docs:** [github.com/cculianu/Fulcrum](https://github.com/cculianu/Fulcrum)
+# Fulcrum BCH on StartOS
+
+> **Upstream docs:** <https://github.com/cculianu/Fulcrum>
 >
-> Fulcrum is a fast, scalable Electrum SPV server for Bitcoin Cash. It indexes the full BCH blockchain to serve light wallets, block explorers, and other Electrum-protocol clients without requiring them to download the blockchain themselves.
+> Everything not listed in this document should behave the same as upstream
+> Fulcrum. If a feature, setting, or behavior is not mentioned here, the
+> upstream documentation is accurate and fully applicable.
+
+Fulcrum is a fast, scalable Electrum server. It indexes a Bitcoin Cash chain from a full node and serves the Electrum protocol to light wallets and to block explorers, so neither has to download the chain itself. Upstream source: [cculianu/Fulcrum](https://github.com/cculianu/Fulcrum).
+
+The package is titled **Fulcrum BCH** and its id is `fulcrum-bch`, to distinguish it from the Bitcoin package `fulcrum`.
 
 ---
 
 ## Table of Contents
 
-1. [Image and Container Runtime](#1-image-and-container-runtime)
-2. [Volume and Data Layout](#2-volume-and-data-layout)
-3. [Installation and First-Run Flow](#3-installation-and-first-run-flow)
-4. [Default Networking](#4-default-networking)
-5. [Configuration Management](#5-configuration-management)
-6. [Network Access and Interfaces](#6-network-access-and-interfaces)
-7. [Actions (StartOS UI)](#7-actions-startos-ui)
-8. [Backups and Restore](#8-backups-and-restore)
-9. [Health Checks](#9-health-checks)
-10. [Dependencies](#10-dependencies)
-11. [Default Overrides](#11-default-overrides)
-12. [Limitations and Differences](#12-limitations-and-differences)
-13. [What Is Unchanged from Upstream](#13-what-is-unchanged-from-upstream)
-14. [Contributing](#14-contributing)
-15. [Quick Reference for AI Consumers](#15-quick-reference-for-ai-consumers)
+- [Image and Container Runtime](#image-and-container-runtime)
+- [Volume and Data Layout](#volume-and-data-layout)
+- [Installation and First-Run Flow](#installation-and-first-run-flow)
+- [Configuration Management](#configuration-management)
+- [Network Access and Interfaces](#network-access-and-interfaces)
+- [Actions (StartOS UI)](#actions-startos-ui)
+- [Backups and Restore](#backups-and-restore)
+- [Health Checks](#health-checks)
+- [Dependencies](#dependencies)
+- [Limitations and Differences](#limitations-and-differences)
+- [What Is Unchanged from Upstream](#what-is-unchanged-from-upstream)
+- [Contributing](#contributing)
+- [Quick Reference for AI Consumers](#quick-reference-for-ai-consumers)
 
 ---
 
-## 1. Image and Container Runtime
+## Image and Container Runtime
 
-| Field | Value |
-|---|---|
-| **Image ID** | `main` |
-| **Source** | `cculianu/fulcrum:v2.1.1` from Docker Hub |
-| **Architectures** | `x86_64`, `aarch64` (aarch64 emulates as x86_64 if not natively available) |
-| **Command** | `Fulcrum --ts-format none /data/fulcrum.conf` |
+| Property      | Value                                                       |
+| ------------- | ----------------------------------------------------------- |
+| Image         | `cculianu/fulcrum`, the upstream image, unmodified          |
+| Architectures | x86_64, aarch64                                             |
+| Command       | `Fulcrum --ts-format none /data/fulcrum.conf`               |
 
----
-
-## 2. Volume and Data Layout
-
-| Volume Name | Mount Point | Purpose |
-|---|---|---|
-| `main` | `/data` | Fulcrum config, Electrum index database, and state |
-
-**StartOS-managed files inside `/data`:**
-
-| File / Directory | Managed By | Purpose |
-|---|---|---|
-| `fulcrum.conf` | StartOS SDK file model | Fulcrum configuration (RPC endpoint, credentials, performance tuning) |
-| `store.json` | StartOS SDK file model | Package state: selected node package ID, sync latch |
-| `banner.txt` | StartOS SDK file model | MOTD banner sent to connecting Electrum clients |
-| `fulc2_db` / `fulc2_db.mainnet` | Fulcrum | Electrum index database (RocksDB) |
-| `latch` | Fulcrum | First-run sync latch marker |
-
-**Dependency volume mounted at runtime (read-only):**
-
-| Mount Point | Source | Purpose |
-|---|---|---|
-| `/mnt/node` | Selected node package `main` volume | Read `store.json` for node RPC credentials (inside SubContainer only) |
+`--ts-format none` drops Fulcrum's own log timestamps, which StartOS already adds.
 
 ---
 
-## 3. Installation and First-Run Flow
+## Volume and Data Layout
 
-1. StartOS pulls the `cculianu/fulcrum:v2.1.1` image.
-2. Seed files are written: `fulcrum.conf` and `store.json` with defaults (node: BCHN).
-3. On first start, Fulcrum reads the selected node's RPC credentials from `/mnt/node/store.json` inside the SubContainer.
-4. `fulcrum.conf` is updated with the node RPC endpoint, credentials, and TLS mode (TLS enabled automatically when BCHD is selected; plaintext for BCHN/Flowee).
-5. Fulcrum connects to the BCH node and waits for it to be fully synced.
-6. Once the node is synced, Fulcrum begins indexing the blockchain. Initial indexing of the full BCH chain takes several hours.
-7. When indexing completes, the Electrum interface opens on port 50001 and the health check reports success.
+| Volume | Mount Point | Purpose                                   |
+| ------ | ----------- | ----------------------------------------- |
+| `main` | `/data`     | Configuration, banner, and chain indexes  |
 
----
+Files at the volume root:
 
-## 4. Default Networking
+| Path                 | Purpose                                                                        |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `fulcrum.conf`       | Fulcrum's config, written by the package — see [Configuration Management](#configuration-management) |
+| `banner.txt`         | The MOTD served to connecting Electrum clients                                 |
+| `store.json`         | Package state: the selected node, and the credential minted for Flowee         |
+| `<chain>/`           | One Fulcrum database per chain (`mainnet/`, `chipnet/`, `testnet3/`, …)         |
 
-| Transport | Default | Inbound | How to Change |
-|---|---|---|---|
-| **Clearnet (IPv4/IPv6)** | Enabled — Electrum port exposed by StartOS | Enabled for Electrum clients (wallets, BCH Explorer) | Managed by StartOS |
-| **Tor** | Available via StartOS routing | Available if StartOS assigns a `.onion` address to the package | Automatic via StartOS |
-| **SSL/TLS Electrum** | Not separately exposed | Not available in this package version | — |
+A Fulcrum database belongs to exactly one chain — Fulcrum refuses to open one built for another — so each chain gets its own directory and `datadir` is pointed at the one matching the chain the node reports. Switching a node between chains therefore never discards an index.
 
----
-
-## 5. Configuration Management
-
-| Group | Settings Covered |
-|---|---|
-| **Select Node Backend** | Choose which BCH full node Fulcrum connects to: BCHN, BCHD, Flowee, or Knuth |
-| **Configure** | Server banner (MOTD), Bitcoin RPC timeout, number of RPC clients, worker threads, database memory (MB), database max open files |
+The selected node's `main` volume is additionally mounted **read-only** at `/mnt/node`. Fulcrum never reads the chain off disk; the mount exists so the package can read the node's own `store.json` for the chain it is on and, on Bitcoin Cash Node and Bitcoin Cash Daemon, its RPC credentials.
 
 ---
 
-## 6. Network Access and Interfaces
+## Installation and First-Run Flow
 
-| Interface | Port | Protocol | Purpose | Condition |
-|---|---|---|---|---|
-| Electrum Interface | 50001 | TCP (plaintext) | Electrum protocol for BCH wallets and BCH Explorer | Always |
+1. On install, a **critical task** prompts for **Select Node Backend**. Until it is answered, that is the only control the service page offers.
+2. Choosing a node writes it to `store.json`. For Bitcoin Cash Node and Bitcoin Cash Daemon, a second critical task is raised **on the node** to turn on the transaction index and turn off pruning. For Flowee, a critical task is raised there to register the RPC credential this package minted at install.
+3. Once the node is installed, configured and running, Fulcrum starts and begins indexing. A full mainnet index takes hours.
+4. When the index completes, StartOS raises a success notification.
 
----
-
-## 7. Actions (StartOS UI)
-
-### Configuration
-
-| Action ID | Name | Description |
-|---|---|---|
-| `select-node` | Select Node Backend | Choose which installed BCH node package (BCHN / BCHD / Flowee / Knuth) Fulcrum uses for blockchain data |
-| `configure` | Configure | Set server banner, RPC timeout, RPC client count, worker threads, DB memory, and max open files |
+There is no upstream setup wizard, and no credentials for the user to set: the RPC credential Fulcrum logs into the node with is resolved or minted by the package.
 
 ---
 
-## 8. Backups and Restore
+## Configuration Management
 
-**What IS backed up:**
-- `fulcrum.conf` — configuration
-- `store.json` — selected node, sync state
-- `banner.txt` — MOTD banner
+`fulcrum.conf` is a StartOS-managed file. The package writes it on every run and merges user settings into it; editing it by hand is not supported.
 
-**What is NOT backed up:**
-- `/fulc2_db` — Electrum index database (entirely derived from the blockchain; too large to back up usefully)
-- `/fulc2_db.mainnet` — same, mainnet-specific variant
-- `/latch` — first-run sync marker
+| StartOS-Managed                                                                                 | User-Configurable (via the Configure action) |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `datadir` — derived from the chain the node reports                                             | `banner.txt` contents                        |
+| `bitcoind` — the node's RPC bridge address                                                      | `bitcoind_timeout`                           |
+| `rpcuser` / `rpcpassword` — read from the node, or minted here for Flowee                       | `bitcoind_clients`                           |
+| `tcp` — pinned to the Electrum port                                                             | `worker_threads`                             |
+| `peering` / `announce` — both off; this server does not join the public Electrum peer network   | `db_mem`                                     |
+| `banner` — pinned to `banner.txt`                                                               | `db_max_open_files`                          |
 
-The Electrum index is fully re-derivable from the connected BCH node. After restore, Fulcrum will re-index from scratch — this can take several hours.
-
----
-
-## 9. Health Checks
-
-| Check | Method | Key Messages |
-|---|---|---|
-| **Electrum** (daemon ready) | `sdk.healthCheck.checkPortListening` on port 50001 | `The Electrum interface is ready` / `Electrum interface not ready — syncing BCH blockchain...` |
-| **Sync Progress** | Port 50001 listen check; falls back to last stdout `<Controller>` log line during indexing | `Fulcrum BCH is fully synced` / Last sync log message (e.g., `Processed N/M blocks`) / `Waiting for sync information...` |
+Every user-configurable key is optional. Left unset, it is omitted from `fulcrum.conf` entirely and Fulcrum applies its own default rather than one this package hard-codes.
 
 ---
 
-## 10. Dependencies
+## Network Access and Interfaces
 
-### Bitcoin Cash Node — BCHN (optional)
+| Interface | Host id | Port  | Protocol      | Purpose                                        |
+| --------- | ------- | ----- | ------------- | ---------------------------------------------- |
+| Electrum  | `main`  | 50001 | Electrum/TCP  | Wallet and explorer queries, plaintext TCP     |
 
-| Field | Value |
-|---|---|
-| **Package ID** | `bitcoincashd` |
-| **Version constraint** | Any |
-| **Required state** | Running and fully synced; pruning must be disabled; `txindex` must be active |
-| **Mounted volumes** | `main` volume mounted read-only at `/mnt/node` for credential discovery |
-| **Purpose** | C++ BCH full node providing JSON-RPC for Fulcrum to index |
+**Access methods:**
 
-### Bitcoin Cash Daemon — BCHD (optional)
+- LAN IP with unique port
+- `<hostname>.local` with unique port
+- Tor `.onion` address
+- Custom domains (if configured)
 
-| Field | Value |
-|---|---|
-| **Package ID** | `bchd` |
-| **Version constraint** | Any |
-| **Required state** | Running and fully synced |
-| **Mounted volumes** | `main` volume mounted read-only at `/mnt/node` for credential discovery |
-| **Purpose** | Go BCH full node alternative; Fulcrum automatically enables `bitcoind-tls` mode when BCHD is selected |
-
-### Flowee the Hub (optional)
-
-| Field | Value |
-|---|---|
-| **Package ID** | `flowee` |
-| **Version constraint** | Any |
-| **Required state** | Running and fully synced |
-| **Mounted volumes** | `main` volume mounted read-only at `/mnt/node` for credential discovery |
-| **Purpose** | Fast C++ BCH validator; SPV-level validation only — follow the canonical chain but does not fully re-validate every transaction |
-
-**At least one of the above three node dependencies must be installed and selected.**
+The binding is **plaintext only**, with no TLS address published alongside it. BCH Explorer resolves this binding's bridge address without specifying a scheme, so publishing both would leave which of the two it dials undefined. Clients that want an encrypted path should use the Tor address.
 
 ---
 
-## 11. Default Overrides
+## Actions (StartOS UI)
 
-| Setting | Upstream Default | StartOS Value | Reason |
-|---|---|---|---|
-| `bitcoind-tls` | Off | Enabled automatically when BCHD is selected | BCHD serves RPC over native TLS; Fulcrum must use HTTPS for the bitcoind connection |
-| `bitcoind_timeout` | 30 s | 30 s (configurable) | Default is adequate; exposed to UI for users with slow nodes during initial sync |
-| `worker_threads` | Auto | 0 (auto) | Lets Fulcrum use all available CPU cores for indexing |
-| `db_mem` | 4096 MB upstream | 2048 MB default | Conservative default for StartOS hardware; user-adjustable |
+| Action                    | Id                     | Visibility | Availability  | Input               | Output                          |
+| ------------------------- | ---------------------- | ---------- | ------------- | ------------------- | ------------------------------- |
+| **Select Node Backend**   | `select-node`          | enabled    | any status    | Node package        | none; restarts Fulcrum          |
+| **Configure**             | `configure`            | enabled    | any status    | Banner + 5 tuning values | none                       |
+| **Delete Chain Index**    | `delete-network-index` | enabled    | only stopped  | Chain               | Confirmation of what was deleted |
 
----
-
-## 12. Limitations and Differences
-
-1. Fulcrum will **not start until the selected BCH node is fully synced**. The health check reports loading until port 50001 opens.
-2. Only **TCP (plaintext) Electrum** is exposed on port 50001. The upstream Fulcrum supports SSL/TLS Electrum (port 50002) and an admin port (8000), but these are not configured or exposed in this StartOS package.
-3. The node backend must be changed via the **Select Node Backend action** — not by editing `fulcrum.conf` directly. The config file is overwritten on each start.
-4. RPC credentials are read **from the dependency volume** inside the SubContainer. They are not stored in Fulcrum's own `store.json`; they are always fetched fresh from the selected node.
-5. Re-indexing is triggered automatically when the selected node changes. This can take several hours.
-6. Knuth is listed as a selectable node backend but Knuth currently has no RPC. Selecting Knuth will cause Fulcrum to fail to connect until Knuth RPC support is added in a future release.
+- **Select Node Backend** writes the chosen node to `store.json`. `main` reads that through a `.const()`, so the write is what restarts Fulcrum against the new node; the action does not restart anything itself. Selecting Flowee also raises the credential-registration task on Flowee.
+- **Configure** merges its input into `fulcrum.conf` and writes `banner.txt`. Values left empty are removed from the config rather than written as a default.
+- **Delete Chain Index** removes one chain's database directory outright. It is gated to a stopped service because Fulcrum holds the database open while it runs.
 
 ---
 
-## 13. What Is Unchanged from Upstream
+## Backups and Restore
 
-- All upstream Fulcrum Electrum protocol behavior (methods, notifications, subscription handling)
-- RocksDB index format and storage layout
-- `fulcrum.conf` configuration file format and all supported keys
-- Performance characteristics: single-pass indexing, O(1) address lookup
+**Included in backup:** the `main` volume, **excluding** every per-chain index directory.
 
----
+**Excluded:** `mainnet/`, `testnet3/`, `testnet4/`, `scalenet/`, `chipnet/`, `regtest/`. Fulcrum's index is derived entirely from the node and is tens of gigabytes on mainnet; carrying it in a backup is pure cost.
 
-## 14. Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md)
+**Restore behavior:** `fulcrum.conf`, `banner.txt` and `store.json` come back as they were — including the node selection and the Flowee credential — and Fulcrum rebuilds the index from the node on first start. Expect a full re-index after a restore.
 
 ---
 
-## 15. Quick Reference for AI Consumers
+## Health Checks
+
+| Check         | Id              | Method                                                   | Messages                                                                            |
+| ------------- | --------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Electrum      | `primary`       | Port listening (50001)                                   | Success: "The Electrum interface is ready on `<chain>`" / Loading while syncing     |
+| Sync Progress | `sync-progress` | Port listening, else Fulcrum's own `<Controller>` log line | Success: "Fulcrum is synced" / Loading: the last progress line Fulcrum printed      |
+
+Fulcrum does not open its Electrum port until the index is caught up, so "listening" is itself the synced signal. While it is not listening, `sync-progress` surfaces Fulcrum's own progress output.
+
+`sync-progress` also carries the chain-change watch. Bitcoin Cash Node moves its RPC port with the chain, so the bridge address alone restarts the service when it switches; Bitcoin Cash Daemon and Flowee keep one port on every chain, so for those the check re-reads the node's `store.json` and restarts the service if the chain has moved.
+
+A `synced-true` oneshot runs once `sync-progress` is ready and raises the sync-complete notification, guarded by a flag in `store.json` so it fires only once.
+
+---
+
+## Dependencies
+
+Exactly one node is required at a time — the one **Select Node Backend** has chosen — so all three are declared optional in the manifest and only the selected one is returned as a live requirement.
+
+| Dependency               | Id             | Required health check | Purpose                                      |
+| ------------------------ | -------------- | --------------------- | -------------------------------------------- |
+| **Bitcoin Cash Node**    | `bitcoincashd` | `primary`             | Chain data over JSON-RPC (default selection) |
+| **Bitcoin Cash Daemon**  | `bchd`         | `rpc-plaintext`       | Chain data over JSON-RPC                     |
+| **Flowee the Hub**       | `flowee`       | `primary`             | Chain data over JSON-RPC                     |
+
+Only the binding Fulcrum dials has to be up — the node's own `sync-progress` is deliberately not required. Fulcrum indexes to whatever height the node has reached and follows it from there, so gating on a full node sync would keep the service unstartable, and its own progress unreadable, for the days a fresh chain takes.
+
+The selected node's volume is mounted read-only at `/mnt/node` — see [Volume and Data Layout](#volume-and-data-layout). Version floors are declared in `startos/dependencies.ts`.
+
+Three details are specific to how each node is reached:
+
+- **Addresses come from the internal host bridge**, resolved with `sdk.host.getBridgeAddress(...).const()` in `startos/utils.ts`. The `.startos` DNS names are retired and are not used. While the node is absent the address resolves `null` and the `bitcoind` line is omitted rather than pointed somewhere that cannot answer; the read heals when the node appears.
+- **Bitcoin Cash Daemon is dialed through its plaintext proxy** (host id `rpc-plaintext`), not its native TLS RPC, so no self-signed certificate has to be trusted. That proxy is on one fixed port for every chain, which also removes the per-chain RPC port table the package used to carry.
+- **Flowee's credential is minted here, not read from Flowee.** Flowee stores only hashed `rpcauth` entries and cannot hand a password back out. `init/seedFiles.ts` mints a username and password into `store.json` once, and **Select Node Backend** raises a task on Flowee to register it.
+
+---
+
+## Limitations and Differences
+
+1. **Plaintext Electrum only.** No TLS address is published on the Electrum binding — see [Network Access and Interfaces](#network-access-and-interfaces) for why. Use the Tor address for an encrypted path.
+2. **Peering and announcement are disabled.** `peering` and `announce` are pinned off, so this server does not join or advertise itself on the public Electrum peer network.
+3. **The chain follows the node and is not configurable here.** Fulcrum indexes whatever chain the selected node is on. To change chains, change the node's chain.
+4. **Knuth is not offered.** Earlier versions listed it as a node backend; no StartOS package provides it.
+5. **`fulcrum.conf` is not hand-editable.** It is rewritten on every run. Use the Configure action.
+6. **The index is not backed up.** A restored install re-indexes from the node.
+
+---
+
+## What Is Unchanged from Upstream
+
+- The Fulcrum binary and its image, used exactly as published upstream.
+- The Electrum protocol surface — every method Fulcrum implements, unchanged.
+- Fulcrum's own indexing, database format, and RocksDB tuning.
+- Every `fulcrum.conf` key not listed under [Configuration Management](#configuration-management) keeps its upstream default.
+- Fulcrum's requirement of an unpruned node with a full transaction index. The package's dependency tasks exist to satisfy it, not to change it.
+
+---
+
+## Contributing
+
+See [AGENTS.md](AGENTS.md).
+
+---
+
+## Quick Reference for AI Consumers
 
 ```yaml
 package_id: fulcrum-bch
-title: Fulcrum
-license: MIT
-upstream_repo: https://github.com/cculianu/Fulcrum
-package_repo: https://github.com/BitcoinCash1/fulcrum-bch-startos
-image:
-  id: main
-  source: cculianu/fulcrum:v2.1.1 (Docker Hub)
-architectures:
-  - x86_64
-  - aarch64
+image: cculianu/fulcrum
+architectures: [x86_64, aarch64]
 volumes:
-  - name: main
-    mountpoint: /data
-    purpose: Fulcrum config, Electrum index database, state
+  main: /data
+mounts:
+  selected_node_volume: /mnt/node (read-only)
 ports:
-  - interface: electrum
-    port: 50001
-    protocol: tcp
-    purpose: Electrum protocol for BCH wallets and BCH Explorer
-    condition: always
-dependencies:
-  bitcoincashd:
-    optional: true
-    purpose: BCHN full node — JSON-RPC source for indexing
-  bchd:
-    optional: true
-    purpose: BCHD full node — alternative JSON-RPC source; TLS mode auto-enabled
-  flowee:
-    optional: true
-    purpose: Flowee the Hub — fast BCH validator; alternative JSON-RPC source
-startos_managed_files:
-  - /data/fulcrum.conf
-  - /data/store.json
-  - /data/banner.txt
+  electrum: 50001
+host_ids:
+  electrum: main
+dependencies: [bitcoincashd, bchd, flowee] # all optional; exactly one selected at a time
+startos_managed_env_vars: none
+startos_managed_config_keys:
+  - datadir
+  - bitcoind
+  - rpcuser
+  - rpcpassword
+  - tcp
+  - peering
+  - announce
+  - banner
 actions:
-  - { id: select-node, name: "Select Node Backend", group: Configuration }
-  - { id: configure, name: "Configure", group: Configuration }
+  - select-node
+  - configure
+  - delete-network-index
 health_checks:
-  - { id: primary, display: "Electrum", method: "port 50001 listen check" }
-  - { id: sync-progress, display: "Sync Progress", method: "port 50001 listen check + stdout log" }
-backup_volumes:
-  - main
-backup_excludes:
-  - /fulc2_db
-  - /fulc2_db.mainnet
-  - /latch
+  - primary
+  - sync-progress
 ```
