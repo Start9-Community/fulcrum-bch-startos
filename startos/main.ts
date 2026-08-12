@@ -104,11 +104,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
     ...credentials,
   })
 
-  // BCHN moves its RPC port with the chain, so the bridge address above already
-  // re-runs main on a switch. BCHD and Flowee keep one port on every chain, so
-  // for them a chain change has to be noticed by re-reading the node's store.
-  const watchChain = node !== 'bitcoincashd'
-
   let lastSyncLog: string | null = null
   let syncNotified = store?.syncNotified ?? false
 
@@ -164,21 +159,23 @@ export const main = sdk.setupMain(async ({ effects }) => {
         display: i18n('Sync Progress'),
         fn: async () => {
           // The node's chain lives in a file on its volume, which is not a
-          // reactive source. This is where that file gets re-read for the two
-          // nodes whose RPC port does not move with the chain: finding one on
-          // another chain restarts the service onto the matching index.
-          if (watchChain) {
-            const current = (await readNodeStore())?.network
-            if (current && nodeNetwork(current) !== network) {
-              console.info(
-                i18n('The node switched from ${from} to ${to}. Restarting.', {
-                  from: network,
-                  to: current,
-                }),
-              )
-              await effects.restart()
-              return { result: 'loading', message: null } as const
-            }
+          // reactive source, so this is where a chain change is noticed —
+          // finding the node on another chain restarts Fulcrum onto the
+          // matching index. Checked for every node, including BCHN: BCHN does
+          // move its RPC port with the chain, but the binding it moves off is
+          // left disabled rather than removed, and a disabled binding still
+          // resolves to its old address. So the bridge address above does not
+          // go null on a switch and would not re-run `main` by itself.
+          const current = (await readNodeStore())?.network
+          if (current && nodeNetwork(current) !== network) {
+            console.info(
+              i18n('The node switched from ${from} to ${to}. Restarting.', {
+                from: network,
+                to: current,
+              }),
+            )
+            await effects.restart()
+            return { result: 'loading', message: null } as const
           }
 
           const fulcrumReady = await sdk.healthCheck.checkPortListening(
