@@ -7,10 +7,11 @@ import { sdk } from './sdk'
 import { NODE_IDS, NodeId } from './utils'
 
 /** The task each node carries on Fulcrum's behalf, keyed `<packageId>:<actionId>`. */
-const NODE_TASK_KEYS: Record<NodeId, string> = {
+const NODE_TASK_KEYS: Record<NodeId, string | null> = {
   bitcoincashd: 'bitcoincashd:autoconfig',
   bchd: 'bchd:autoconfig',
   flowee: 'flowee:create-dependent-credential',
+  'knuth-bch': null,
 }
 
 export const setDependencies = sdk.setupDependencies(async ({ effects }) => {
@@ -24,7 +25,9 @@ export const setDependencies = sdk.setupDependencies(async ({ effects }) => {
   // its key here would race the task the action raises straight afterwards.
   await sdk.action.clearTask(
     effects,
-    ...NODE_IDS.filter((id) => id !== node).map((id) => NODE_TASK_KEYS[id]),
+    ...NODE_IDS.filter((id) => id !== node)
+      .map((id) => NODE_TASK_KEYS[id])
+      .filter((key): key is string => key !== null),
   )
 
   if (store?.nodeConfirmed) {
@@ -92,7 +95,13 @@ export const setDependencies = sdk.setupDependencies(async ({ effects }) => {
     flowee: {
       id: 'flowee',
       kind: 'running',
-      versionRange: '>=2026.5.2:12',
+      versionRange: '>=2026.5.3:0',
+      healthChecks: ['primary'],
+    },
+    'knuth-bch': {
+      id: 'knuth-bch',
+      kind: 'running',
+      versionRange: '>=1.3.0',
       healthChecks: ['primary'],
     },
   }

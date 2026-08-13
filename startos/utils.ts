@@ -4,10 +4,7 @@ import {
   rpcPlaintextPort as bchdRpcPort,
 } from 'bitcoin-cash-daemon-startos/startos/utils'
 import { networkPorts as bchnNetworkPorts } from 'bitcoin-cash-node-startos/startos/utils'
-import {
-  rpcHostId as floweeRpcHostId,
-  rpcPort as floweeRpcPort,
-} from 'flowee-startos/startos/utils'
+import { rpcHostId as floweeRpcHostId } from 'flowee-startos/startos/utils'
 import { sdk } from './sdk'
 
 export const electrumPort = 50001
@@ -22,7 +19,7 @@ export const electrumInterfaceId = 'electrum'
  */
 export const nodeMountpoint = '/mnt/node'
 
-export const NODE_IDS = ['bitcoincashd', 'bchd', 'flowee'] as const
+export const NODE_IDS = ['bitcoincashd', 'bchd', 'flowee', 'knuth-bch'] as const
 export type NodeId = (typeof NODE_IDS)[number]
 
 /**
@@ -53,10 +50,8 @@ export const networkDir = (network: Network) => `/data/${network}`
  * Which binding each node publishes the JSON-RPC Fulcrum dials on, and — where
  * the port moves with the chain — how to derive it.
  *
- * BCHN remaps RPC per chain, so its port is only knowable once the node's own
- * chain is known. BCHD's plaintext stunnel proxy and Flowee's RPC are both
- * pinned to one port on every chain. BCHD is dialed through that proxy rather
- * than its native TLS RPC so no certificate has to be trusted here.
+ * BCHN remaps RPC per chain. Flowee and Knuth use the same per-network RPC
+ * ports. BCHD is dialed through its plaintext proxy (one port, all chains).
  */
 const RPC_BINDINGS: Record<
   NodeId,
@@ -70,7 +65,20 @@ const RPC_BINDINGS: Record<
     ssl: false,
   },
   bchd: { hostId: bchdRpcHostId, port: () => bchdRpcPort },
-  flowee: { hostId: floweeRpcHostId, port: () => floweeRpcPort, ssl: false },
+  flowee: {
+    hostId: floweeRpcHostId,
+    // Hub defaults match BCHN per network. Start9 Flowee :12 pinned 8332
+    // and broke chipnet dependents; BitcoinCash1 / Flowee #4 restore this.
+    port: (network) => bchnNetworkPorts[network].rpc,
+    ssl: false,
+  },
+  // Optional sideload from BitcoinCash1. Same per-network RPC ports as BCHN.
+  // Classic GBT is served by the 1.3.0 sidecar (kth itself is light-GBT).
+  'knuth-bch': {
+    hostId: 'rpc',
+    port: (network) => bchnNetworkPorts[network].rpc,
+    ssl: false,
+  },
 }
 
 /**

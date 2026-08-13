@@ -61,6 +61,7 @@ export default {
     56: 'Fulcrum no tiene índice para ${chain}.',
     57: 'Índice eliminado',
     58: 'El índice de ${chain} ha desaparecido. Fulcrum lo reconstruye la próxima vez que se ejecute en esa cadena.',
+    59: 'Knuth',
   },
   de_DE: {
     0: 'Fulcrum BCH wird gestartet',
@@ -122,6 +123,7 @@ export default {
     56: 'Fulcrum hat keinen Index für ${chain}.',
     57: 'Index gelöscht',
     58: 'Der Index für ${chain} ist entfernt. Fulcrum baut ihn beim nächsten Lauf auf dieser Chain neu auf.',
+    59: 'Knuth',
   },
   pl_PL: {
     0: 'Uruchamianie Fulcrum BCH',
@@ -183,6 +185,7 @@ export default {
     56: 'Fulcrum nie ma indeksu dla ${chain}.',
     57: 'Indeks usunięty',
     58: 'Indeks ${chain} został usunięty. Fulcrum odbuduje go przy następnym uruchomieniu w tym łańcuchu.',
+    59: 'Knuth',
   },
   fr_FR: {
     0: 'Démarrage de Fulcrum BCH',
@@ -244,5 +247,6 @@ export default {
     56: "Fulcrum n'a pas d'index pour ${chain}.",
     57: 'Index supprimé',
     58: "L'index ${chain} a disparu. Fulcrum le reconstruit lors de sa prochaine exécution sur cette chaîne.",
+    59: 'Knuth',
   },
 } satisfies Record<string, LangDict>

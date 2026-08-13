@@ -1,9 +1,9 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2.1.1:18',
+  version: '2.1.1:19',
   releaseNotes: {
-    en_US: `Notices when the node changes chain, whichever node it is.
+    en_US: `Optional Knuth sideload; Flowee is dialed on the per-network RPC port.\n\nNotices when the node changes chain, whichever node it is.
 
 Fulcrum watched for a chain change on Bitcoin Cash Daemon and Flowee but not on Bitcoin Cash Node, on the assumption that Bitcoin Cash Node moving its RPC port would be noticed by itself. It is not: the port it moves off stays registered, just disabled, and a disabled port still resolves — so Fulcrum kept indexing against the chain it started on until it was restarted by hand.`,
     es_ES: `Detecta cuándo el nodo cambia de cadena, sea cual sea el nodo.

@@ -67,6 +67,7 @@ const dict = {
   'Fulcrum has no index for ${chain}.': 56,
   'Index Deleted': 57,
   'The ${chain} index is gone. Fulcrum rebuilds it the next time it runs on that chain.': 58,
+  'Knuth': 59,
 } as const
 
 export type I18nKey = keyof typeof dict
