@@ -158,14 +158,10 @@ export const main = sdk.setupMain(async ({ effects }) => {
       ready: {
         display: i18n('Sync Progress'),
         fn: async () => {
-          // The node's chain lives in a file on its volume, which is not a
-          // reactive source, so this is where a chain change is noticed —
-          // finding the node on another chain restarts Fulcrum onto the
-          // matching index. Checked for every node, including BCHN: BCHN does
-          // move its RPC port with the chain, but the binding it moves off is
-          // left disabled rather than removed, and a disabled binding still
-          // resolves to its old address. So the bridge address above does not
-          // go null on a switch and would not re-run `main` by itself.
+          // The node's chain is a file, not a reactive source, so a change is
+          // noticed here — for every node, BCHN included: the binding it moves
+          // off a chain is left disabled, and a disabled binding still
+          // resolves, so the bridge address above never goes null.
           const current = (await readNodeStore())?.network
           if (current && nodeNetwork(current) !== network) {
             console.info(
