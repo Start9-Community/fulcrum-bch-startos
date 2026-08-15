@@ -95,13 +95,13 @@ export const setDependencies = sdk.setupDependencies(async ({ effects }) => {
     flowee: {
       id: 'flowee',
       kind: 'running',
-      versionRange: '>=2026.5.3:0',
+      versionRange: '>=2026.5.2:13',
       healthChecks: ['primary'],
     },
     'knuth-bch': {
       id: 'knuth-bch',
       kind: 'running',
-      versionRange: '>=1.3.0',
+      versionRange: '>=1.3.0:0',
       healthChecks: ['primary'],
     },
   }
