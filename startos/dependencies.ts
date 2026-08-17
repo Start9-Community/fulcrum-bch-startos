@@ -13,6 +13,8 @@ const NODE_TASK_KEYS: Record<NodeId, string> = {
   flowee: 'flowee:create-dependent-credential',
 }
 
+// bitcoincashd, bchd and flowee are all optional in the manifest and exactly one
+// is selected at a time, so only the one store.json names is returned here.
 export const setDependencies = sdk.setupDependencies(async ({ effects }) => {
   const store = await storeJson.read().const(effects)
   const node = store?.nodePackageId ?? 'bitcoincashd'

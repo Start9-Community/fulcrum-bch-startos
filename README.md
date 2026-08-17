@@ -4,15 +4,15 @@
 
 # Fulcrum BCH on StartOS
 
-> **Upstream docs:** <https://github.com/cculianu/Fulcrum>
->
 > Everything not listed in this document should behave the same as upstream
 > Fulcrum. If a feature, setting, or behavior is not mentioned here, the
-> upstream documentation is accurate and fully applicable.
+> upstream documentation is accurate and fully applicable — see the
+> Documentation section of `instructions.md` for links.
 
-Fulcrum is a fast, scalable Electrum server. It indexes a Bitcoin Cash chain from a full node and serves the Electrum protocol to light wallets and to block explorers, so neither has to download the chain itself. Upstream source: [cculianu/Fulcrum](https://github.com/cculianu/Fulcrum).
+[Fulcrum](https://github.com/cculianu/Fulcrum) is an Electrum server: it indexes a Bitcoin Cash node so wallets can query their history directly. This package lets you point it at any of the three Bitcoin Cash nodes packaged for StartOS, works out that node's chain and credentials for itself, and keeps a separate index per chain.
 
-The package is titled **Fulcrum BCH** and its id is `fulcrum-bch`, to distinguish it from the Bitcoin package `fulcrum`.
+- **Upstream repo:** <https://github.com/cculianu/Fulcrum>
+- **Wrapper repo:** <https://github.com/Start9-Community/fulcrum-bch-startos>
 
 ---
 
@@ -20,183 +20,184 @@ The package is titled **Fulcrum BCH** and its id is `fulcrum-bch`, to distinguis
 
 - [Image and Container Runtime](#image-and-container-runtime)
 - [Volume and Data Layout](#volume-and-data-layout)
-- [Installation and First-Run Flow](#installation-and-first-run-flow)
-- [Configuration Management](#configuration-management)
-- [Network Access and Interfaces](#network-access-and-interfaces)
-- [Actions (StartOS UI)](#actions-startos-ui)
-- [Backups and Restore](#backups-and-restore)
-- [Health Checks](#health-checks)
+- [File Models](#file-models)
 - [Dependencies](#dependencies)
+- [Network Access and Interfaces](#network-access-and-interfaces)
+- [Installation and First-Run Flow](#installation-and-first-run-flow)
+- [Actions](#actions)
+- [Tasks](#tasks)
+- [Health Checks](#health-checks)
+- [Backups and Restore](#backups-and-restore)
 - [Limitations and Differences](#limitations-and-differences)
-- [What Is Unchanged from Upstream](#what-is-unchanged-from-upstream)
-- [Contributing](#contributing)
 - [Quick Reference for AI Consumers](#quick-reference-for-ai-consumers)
 
 ---
 
 ## Image and Container Runtime
 
-| Property      | Value                                                       |
-| ------------- | ----------------------------------------------------------- |
-| Image         | `cculianu/fulcrum`, the upstream image, unmodified          |
-| Architectures | x86_64, aarch64                                             |
-| Command       | `Fulcrum --ts-format none /data/fulcrum.conf`               |
+One upstream image, consumed unmodified.
 
-`--ts-format none` drops Fulcrum's own log timestamps, which StartOS already adds.
+| Property      | Value              |
+| ------------- | ------------------ |
+| Image         | `cculianu/fulcrum` |
+| Architectures | x86_64, aarch64    |
 
----
+| Subcontainer  | Purpose                                  |
+| ------------- | ---------------------------------------- |
+| `primary-sub` | The only daemon — the one to `attach` to |
 
 ## Volume and Data Layout
 
-| Volume | Mount Point | Purpose                                   |
-| ------ | ----------- | ----------------------------------------- |
-| `main` | `/data`     | Configuration, banner, and chain indexes  |
+One volume, plus a read-only view of the selected node's.
 
-Files at the volume root:
+| Volume                 | Mount Point | Purpose                                    |
+| ---------------------- | ----------- | ------------------------------------------ |
+| `main`                 | `/data`     | One index per chain, the config, the store |
+| The node's `main` (ro) | `/mnt/node` | The node's own settings and credentials    |
 
-| Path                 | Purpose                                                                        |
-| -------------------- | ------------------------------------------------------------------------------ |
-| `fulcrum.conf`       | Fulcrum's config, written by the package — see [Configuration Management](#configuration-management) |
-| `banner.txt`         | The MOTD served to connecting Electrum clients                                 |
-| `store.json`         | Package state: the selected node, and the credential minted for Flowee         |
-| `<chain>/`           | One Fulcrum database per chain (`mainnet/`, `chipnet/`, `testnet3/`, …)         |
+**Each chain gets its own directory** under the volume. A Fulcrum database belongs to exactly one chain and it refuses to open one built for another, so switching chains never discards an index — the previous one is still there when you switch back.
 
-A Fulcrum database belongs to exactly one chain — Fulcrum refuses to open one built for another — so each chain gets its own directory and `datadir` is pointed at the one matching the chain the node reports. Switching a node between chains therefore never discards an index.
+**Fulcrum never reads the chain off disk.** The node mount exists so the package can read the node's own state file: which chain it is on, and — on two of the three nodes — the RPC credentials to dial it with. Everything else comes over RPC.
 
-The selected node's `main` volume is additionally mounted **read-only** at `/mnt/node`. Fulcrum never reads the chain off disk; the mount exists so the package can read the node's own `store.json` for the chain it is on and, on Bitcoin Cash Node and Bitcoin Cash Daemon, its RPC credentials.
+The index is tens of gigabytes on mainnet, and is excluded from backups — see [Backups and Restore](#backups-and-restore).
 
----
+## File Models
 
-## Installation and First-Run Flow
+Three models. The config's fields split between pinned and tunable, and the store holds the one credential the package has to mint itself.
 
-1. On install, a **critical task** prompts for **Select Node Backend**. Until it is answered, that is the only control the service page offers.
-2. Choosing a node writes it to `store.json`. For Bitcoin Cash Node and Bitcoin Cash Daemon, a second critical task is raised **on the node** to turn on the transaction index and turn off pruning. For Flowee, a critical task is raised there to register the RPC credential this package minted at install.
-3. Once the node is installed, configured and running, Fulcrum starts and begins indexing. A full mainnet index takes hours.
-4. When the index completes, StartOS raises a success notification.
+| File           | Format | Modelled                  | Written by                    |
+| -------------- | ------ | ------------------------- | ----------------------------- |
+| `fulcrum.conf` | INI    | Yes — `FileHelper.ini`    | Init, `main`, and the actions |
+| `banner.txt`   | text   | Yes — `FileHelper.string` | The Configure action          |
+| `store.json`   | JSON   | Yes — `FileHelper.json`   | Init and the actions          |
 
-There is no upstream setup wizard, and no credentials for the user to set: the RPC credential Fulcrum logs into the node with is resolved or minted by the package.
+**Pinned in the config:** the Electrum bind address, the banner path, and peering and announcement — both off, because a server behind StartOS's networking should not be advertising itself to the Electrum peer network. TLS is pinned _off_ toward the node, since the package dials plaintext bindings on purpose.
 
----
+**Written by the package:** the data directory (which chain), the node address, and the RPC credentials.
 
-## Configuration Management
+**User-tunable:** the RPC timeout and client count, worker threads, database memory, and open-file limit.
 
-`fulcrum.conf` is a StartOS-managed file. The package writes it on every run and merges user settings into it; editing it by hand is not supported.
+**The node address is omitted rather than defaulted when the node is absent.** Fulcrum then has no node line at all instead of one pointing somewhere that cannot answer, and the reactive read heals it in when the node appears.
 
-| StartOS-Managed                                                                                 | User-Configurable (via the Configure action) |
-| ----------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `datadir` — derived from the chain the node reports                                             | `banner.txt` contents                        |
-| `bitcoind` — the node's RPC bridge address                                                      | `bitcoind_timeout`                           |
-| `rpcuser` / `rpcpassword` — read from the node, or minted here for Flowee                       | `bitcoind_clients`                           |
-| `tcp` — pinned to the Electrum port                                                             | `worker_threads`                             |
-| `peering` / `announce` — both off; this server does not join the public Electrum peer network   | `db_mem`                                     |
-| `banner` — pinned to `banner.txt`                                                               | `db_max_open_files`                          |
-
-Every user-configurable key is optional. Left unset, it is omitted from `fulcrum.conf` entirely and Fulcrum applies its own default rather than one this package hard-codes.
-
----
-
-## Network Access and Interfaces
-
-| Interface | Host id | Port  | Protocol      | Purpose                                        |
-| --------- | ------- | ----- | ------------- | ---------------------------------------------- |
-| Electrum  | `main`  | 50001 | Electrum/TCP  | Wallet and explorer queries, plaintext TCP     |
-
-**Access methods:**
-
-- LAN IP with unique port
-- `<hostname>.local` with unique port
-- Tor `.onion` address
-- Custom domains (if configured)
-
-The binding is **plaintext only**, with no TLS address published alongside it. BCH Explorer resolves this binding's bridge address without specifying a scheme, so publishing both would leave which of the two it dials undefined. Clients that want an encrypted path should use the Tor address.
-
----
-
-## Actions (StartOS UI)
-
-| Action                    | Id                     | Visibility | Availability  | Input               | Output                          |
-| ------------------------- | ---------------------- | ---------- | ------------- | ------------------- | ------------------------------- |
-| **Select Node Backend**   | `select-node`          | enabled    | any status    | Node package        | none; restarts Fulcrum          |
-| **Configure**             | `configure`            | enabled    | any status    | Banner + 5 tuning values | none                       |
-| **Delete Chain Index**    | `delete-network-index` | enabled    | only stopped  | Chain               | Confirmation of what was deleted |
-
-- **Select Node Backend** writes the chosen node to `store.json`. `main` reads that through a `.const()`, so the write is what restarts Fulcrum against the new node; the action does not restart anything itself. Selecting Flowee also raises the credential-registration task on Flowee.
-- **Configure** merges its input into `fulcrum.conf` and writes `banner.txt`. Values left empty are removed from the config rather than written as a default.
-- **Delete Chain Index** removes one chain's database directory outright. It is gated to a stopped service because Fulcrum holds the database open while it runs.
-
----
-
-## Backups and Restore
-
-**Included in backup:** the `main` volume, **excluding** every per-chain index directory.
-
-**Excluded:** `mainnet/`, `testnet3/`, `testnet4/`, `scalenet/`, `chipnet/`, `regtest/`. Fulcrum's index is derived entirely from the node and is tens of gigabytes on mainnet; carrying it in a backup is pure cost.
-
-**Restore behavior:** `fulcrum.conf`, `banner.txt` and `store.json` come back as they were — including the node selection and the Flowee credential — and Fulcrum rebuilds the index from the node on first start. Expect a full re-index after a restore.
-
----
-
-## Health Checks
-
-| Check         | Id              | Method                                                   | Messages                                                                            |
-| ------------- | --------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Electrum      | `primary`       | Port listening (50001)                                   | Success: "The Electrum interface is ready on `<chain>`" / Loading while syncing     |
-| Sync Progress | `sync-progress` | Port listening, else Fulcrum's own `<Controller>` log line | Success: "Fulcrum is synced" / Loading: the last progress line Fulcrum printed      |
-
-Fulcrum does not open its Electrum port until the index is caught up, so "listening" is itself the synced signal. While it is not listening, `sync-progress` surfaces Fulcrum's own progress output.
-
-`sync-progress` also carries the chain-change watch. Bitcoin Cash Node moves its RPC port with the chain, so the bridge address alone restarts the service when it switches; Bitcoin Cash Daemon and Flowee keep one port on every chain, so for those the check re-reads the node's `store.json` and restarts the service if the chain has moved.
-
-A `synced-true` oneshot runs once `sync-progress` is ready and raises the sync-complete notification, guarded by a flag in `store.json` so it fires only once.
-
----
+`store.json` holds the selected node, whether that selection has been confirmed, a notification flag, and **a Flowee credential**. That last one is there because of an asymmetry between the nodes: BCHN and BCHD publish their own credentials in their state files, which the package reads off the mount, while **Flowee authenticates against hashed entries and cannot hand a password back** — so the package mints one here and registers it on Flowee instead.
 
 ## Dependencies
 
-Exactly one node is required at a time — the one **Select Node Backend** has chosen — so all three are declared optional in the manifest and only the selected one is returned as a live requirement.
+Three are declared, and **exactly one is required at a time** — whichever node you selected.
 
-| Dependency               | Id             | Required health check | Purpose                                      |
-| ------------------------ | -------------- | --------------------- | -------------------------------------------- |
-| **Bitcoin Cash Node**    | `bitcoincashd` | `primary`             | Chain data over JSON-RPC (default selection) |
-| **Bitcoin Cash Daemon**  | `bchd`         | `rpc-plaintext`       | Chain data over JSON-RPC                     |
-| **Flowee the Hub**       | `flowee`       | `primary`             | Chain data over JSON-RPC                     |
+| Node                | Health check required | Why that check                                                                                                                 |
+| ------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Bitcoin Cash Node   | `primary`             | Its RPC                                                                                                                        |
+| Bitcoin Cash Daemon | `rpc-plaintext`       | It serves RPC over its own self-signed TLS, so the package dials its plaintext proxy instead — that proxy is what has to be up |
+| Flowee the Hub      | `primary`             | Its RPC                                                                                                                        |
 
-Only the binding Fulcrum dials has to be up — the node's own `sync-progress` is deliberately not required. Fulcrum indexes to whatever height the node has reached and follows it from there, so gating on a full node sync would keep the service unstartable, and its own progress unreadable, for the days a fresh chain takes.
+**None of them gate on the node's sync progress, deliberately.** Fulcrum indexes to whatever height the node has reached and follows it from there, so requiring a fully-synced node would keep this service unstartable — and its own progress unreadable — for the days a fresh chain takes.
 
-The selected node's volume is mounted read-only at `/mnt/node` — see [Volume and Data Layout](#volume-and-data-layout). Version floors are declared in `startos/dependencies.ts`.
+**Each node needs to be unpruned with a full transaction index**, and the package raises a recurring task on that node's own page to arrange it. On BCHN it also turns ZeroMQ on, which is upstream's recommendation rather than a requirement — so it is applied when the task runs but does not by itself keep the task raised.
 
-Three details are specific to how each node is reached:
+**Flowee is handled differently.** Its task registers a credential rather than changing a setting, and since Flowee keeps only a hash and reports no current input, a recurring "does this match" task would reappear on every init however many times the user had answered it. So that one is raised by the selection action instead.
 
-- **Addresses come from the internal host bridge**, resolved with `sdk.host.getBridgeAddress(...).const()` in `startos/utils.ts`. The `.startos` DNS names are retired and are not used. While the node is absent the address resolves `null` and the `bitcoind` line is omitted rather than pointed somewhere that cannot answer; the read heals when the node appears.
-- **Bitcoin Cash Daemon is dialed through its plaintext proxy** (host id `rpc-plaintext`), not its native TLS RPC, so no self-signed certificate has to be trusted. That proxy is on one fixed port for every chain, which also removes the per-chain RPC port table the package used to carry.
-- **Flowee's credential is minted here, not read from Flowee.** Flowee stores only hashed `rpcauth` entries and cannot hand a password back out. `init/seedFiles.ts` mints a username and password into `store.json` once, and **Select Node Backend** raises a task on Flowee to register it.
+Tasks belonging to nodes you are _not_ on are cleared, so nothing sits in the list against a node Fulcrum no longer talks to.
 
----
+## Network Access and Interfaces
+
+One interface, and it is plaintext on purpose.
+
+| Interface | Id         | Type | Port  | Description                                         |
+| --------- | ---------- | ---- | ----- | --------------------------------------------------- |
+| Electrum  | `electrum` | api  | 50001 | The Electrum protocol, for wallets and BCH Explorer |
+
+**No TLS address is published alongside it**, unlike the Bitcoin Fulcrum package. BCH Explorer reads this binding's bridge address without asking for a scheme, so publishing both would leave which of the two it dials undefined. One address means one answer.
+
+## Installation and First-Run Flow
+
+Install raises one critical task: choose the node. There is no default that would be right — the three nodes differ in how they authenticate, which chains they run, and what has to be configured on them.
+
+Once selected, the sequence is:
+
+1. The package reads the node's state file to learn **which chain it is on**, and picks the matching index directory.
+2. It resolves the node's RPC address over the internal bridge, and gets credentials — from the node's own state file on BCHN and BCHD, or from the credential it registered on Flowee.
+3. Fulcrum starts indexing, which **takes hours to days on mainnet** and is the long part.
+
+**The chain is followed, not chosen here.** Switching the node's chain moves Fulcrum with it, onto that chain's own index directory.
+
+A notification is sent when the index first completes.
+
+## Actions
+
+Three actions.
+
+### Select Node Backend
+
+Chooses which Bitcoin Cash node Fulcrum indexes from. Run it when its task appears, and again to switch nodes.
+
+- **What it changes:** the selection in the store — and with it the declared dependency, the mounted volume, the RPC address, the credentials, and which node carries the configuration task.
+- **Cost:** the service restarts and reconnects.
+- **Repeat safety:** idempotent.
+- **On Flowee it also registers a credential** on that node, which is why its task comes from here rather than from the dependency setup.
+- **Switching nodes does not discard the index** if the new node is on the same chain — the index belongs to the chain, not the node.
+
+### Configure — Configuration group
+
+Sets the server banner and Fulcrum's performance tunables.
+
+- **What it changes:** `banner.txt` and the tunable keys in `fulcrum.conf`.
+- **Cost:** applies on restart.
+- **Repeat safety:** idempotent.
+- **The database memory setting is the one that matters** on constrained hardware; the rest rarely need changing.
+
+### Delete Chain Index — Maintenance group
+
+Deletes the index for a chosen chain.
+
+- **When to run it:** **only while stopped.**
+- **What it changes:** removes that chain's directory from the volume.
+- **Cost:** **the index has to be rebuilt from scratch** — hours to days on mainnet.
+- **Repeat safety:** idempotent, but destructive. Use it to reclaim space from a chain you no longer follow, or to recover from a corrupted index.
+
+## Tasks
+
+Two, and the second appears on **another service's** page.
+
+| Task                     | Severity   | Raised when                              | Cleared when              |
+| ------------------------ | ---------- | ---------------------------------------- | ------------------------- |
+| Select Node Backend      | `critical` | At install                               | The action runs           |
+| The node's configuration | `critical` | The selected node is pruned or unindexed | That node is reconfigured |
+
+The second is recurring on BCHN and BCHD, so turning either setting back off brings it back. On Flowee it is raised once by the selection action, for the reason given under [Dependencies](#dependencies).
+
+`critical` blocks the service it belongs to from starting and suspends the ordinary controls.
+
+## Health Checks
+
+Two checks.
+
+| Check           | Displayed as    | Method                          |
+| --------------- | --------------- | ------------------------------- |
+| `primary`       | "Electrum"      | The Electrum port is listening  |
+| `sync-progress` | "Sync Progress" | Fulcrum's own indexing progress |
+
+**"Electrum" goes green long before the server is useful.** Fulcrum binds its port early and indexes afterwards, so a wallet connecting during the initial index gets a server that answers and has no history for it. "Sync Progress" is the one to read.
+
+## Backups and Restore
+
+The `main` volume is copied **except every chain's index directory**.
+
+So the backup is the configuration, the banner, and the node selection — kilobytes rather than the tens of gigabytes an index occupies. The index is derived entirely from the node and is rebuilt on restore.
+
+**A restored instance re-indexes from scratch**, taking the same hours to days a fresh install does, and nothing depending on it works until that finishes. That is the deliberate trade; backing up a live index would be both enormous and unsafe to restore.
+
+The Flowee credential is in the backup, so a restored install still authenticates against a Flowee that was registered before.
 
 ## Limitations and Differences
 
-1. **Plaintext Electrum only.** No TLS address is published on the Electrum binding — see [Network Access and Interfaces](#network-access-and-interfaces) for why. Use the Tor address for an encrypted path.
-2. **Peering and announcement are disabled.** `peering` and `announce` are pinned off, so this server does not join or advertise itself on the public Electrum peer network.
-3. **The chain follows the node and is not configurable here.** Fulcrum indexes whatever chain the selected node is on. To change chains, change the node's chain.
-4. **Knuth is not offered.** Earlier versions listed it as a node backend; no StartOS package provides it.
-5. **`fulcrum.conf` is not hand-editable.** It is rewritten on every run. Use the Configure action.
-6. **The index is not backed up.** A restored install re-indexes from the node.
-
----
-
-## What Is Unchanged from Upstream
-
-- The Fulcrum binary and its image, used exactly as published upstream.
-- The Electrum protocol surface — every method Fulcrum implements, unchanged.
-- Fulcrum's own indexing, database format, and RocksDB tuning.
-- Every `fulcrum.conf` key not listed under [Configuration Management](#configuration-management) keeps its upstream default.
-- Fulcrum's requirement of an unpruned node with a full transaction index. The package's dependency tasks exist to satisfy it, not to change it.
-
----
-
-## Contributing
-
-See [AGENTS.md](AGENTS.md).
+1. **The index is not backed up.** A restore means re-indexing.
+2. **The node must be unpruned with a full transaction index**, enforced by a recurring task on the node.
+3. **No TLS on the Electrum interface**, deliberately, so dependents have exactly one address to dial.
+4. **Peering and announcement are off.** This server does not join the Electrum peer network.
+5. **The chain follows the node.** It is not selectable here.
+6. **Only the three packaged Bitcoin Cash nodes are supported**; an external node cannot be used.
+7. **BCHD is reached through its plaintext proxy**, not its native TLS RPC, so its self-signed certificate never has to be trusted here.
 
 ---
 
@@ -205,31 +206,32 @@ See [AGENTS.md](AGENTS.md).
 ```yaml
 package_id: fulcrum-bch
 image: cculianu/fulcrum
-architectures: [x86_64, aarch64]
+architectures:
+  - x86_64
+  - aarch64
+subcontainers:
+  - primary-sub
 volumes:
-  main: /data
-mounts:
-  selected_node_volume: /mnt/node (read-only)
-ports:
-  electrum: 50001
-host_ids:
-  electrum: main
-dependencies: [bitcoincashd, bchd, flowee] # all optional; exactly one selected at a time
-startos_managed_env_vars: none
-startos_managed_config_keys:
-  - datadir
-  - bitcoind
-  - rpcuser
-  - rpcpassword
-  - tcp
-  - peering
-  - announce
-  - banner
+  main: /data # one index directory per chain; the node's volume is mounted read-only at /mnt/node
+file_models:
+  - fulcrum.conf
+  - banner.txt
+  - store.json
+startos_managed_env_vars: [] # configuration is written into fulcrum.conf
+dependencies: # exactly one is required, whichever is selected
+  - bitcoincashd # health check: primary
+  - bchd # health check: rpc-plaintext, not the native TLS RPC
+  - flowee # health check: primary
+interfaces:
+  electrum: { type: api, port: 50001 } # plaintext only, no TLS leg
 actions:
   - select-node
   - configure
-  - delete-network-index
+  - delete-network-index # only-stopped
+tasks:
+  - { action: select-node, severity: critical } # install only
+  - { action: '<node>:autoconfig', severity: critical } # on the node's page, recurring
 health_checks:
-  - primary
-  - sync-progress
+  - primary # displayed "Electrum"; binds before indexing
+  - sync-progress # displayed "Sync Progress"; the one that matters
 ```
