@@ -68,12 +68,14 @@ Three models. The config's fields split between pinned and tunable, and the stor
 | File           | Format | Modelled                  | Written by                    |
 | -------------- | ------ | ------------------------- | ----------------------------- |
 | `fulcrum.conf` | INI    | Yes — `FileHelper.ini`    | Init, `main`, and the actions |
-| `banner.txt`   | text   | Yes — `FileHelper.string` | The Configure action          |
+| `banner.txt`   | text   | Yes — `FileHelper.string` | Install, and Configure        |
 | `store.json`   | JSON   | Yes — `FileHelper.json`   | Init and the actions          |
 
 **Pinned in the config:** the Electrum bind address, the banner path, and peering and announcement — both off, because a server behind StartOS's networking should not be advertising itself to the Electrum peer network. TLS is pinned _off_ toward the node, since the package dials plaintext bindings on purpose.
 
 **Written by the package:** the data directory (which chain), the node address, and the RPC credentials.
+
+**`banner.txt` is seeded at install.** Configure with the banner left empty deletes it, and Fulcrum then serves its built-in banner (`Connected to a Fulcrum … server`).
 
 **User-tunable:** the RPC timeout and client count, worker threads, database memory, and open-file limit.
 
@@ -83,13 +85,15 @@ Three models. The config's fields split between pinned and tunable, and the stor
 
 ## Dependencies
 
-Three are declared, and **exactly one is required at a time** — whichever node you selected.
+Three are declared, all optional, and **exactly one is enabled at a time** — whichever node you selected.
 
-| Node                | Health check required | Why that check                                                                                                                 |
-| ------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Bitcoin Cash Node   | `primary`             | Its RPC                                                                                                                        |
-| Bitcoin Cash Daemon | `rpc-plaintext`       | It serves RPC over its own self-signed TLS, so the package dials its plaintext proxy instead — that proxy is what has to be up |
-| Flowee the Hub      | `primary`             | Its RPC                                                                                                                        |
+| Node                | Minimum version | Health check required | Why that check                                                                                                                 |
+| ------------------- | --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Bitcoin Cash Node   | `29.0.0:11`     | `primary`             | Its RPC                                                                                                                        |
+| Bitcoin Cash Daemon | `0.22.2:0`      | `rpc-plaintext`       | It serves RPC over its own self-signed TLS, so the package dials its plaintext proxy instead — that proxy is what has to be up |
+| Flowee the Hub      | `2026.5.2:12`   | `primary`             | Its RPC                                                                                                                        |
+
+**Bitcoin Cash Node's floor is the first build that rebinds its RPC port when its chain changes**; on an older one, the port Fulcrum dials after a chain switch has no binding until the node is rebuilt.
 
 **None of them gate on the node's sync progress, deliberately.** Fulcrum indexes to whatever height the node has reached and follows it from there, so requiring a fully-synced node would keep this service unstartable — and its own progress unreadable — for the days a fresh chain takes.
 
@@ -97,7 +101,7 @@ Three are declared, and **exactly one is required at a time** — whichever node
 
 **Flowee is handled differently.** Its task registers a credential rather than changing a setting, and since Flowee keeps only a hash and reports no current input, a recurring "does this match" task would reappear on every init however many times the user had answered it. So that one is raised by the selection action instead.
 
-Tasks belonging to nodes you are _not_ on are cleared, so nothing sits in the list against a node Fulcrum no longer talks to.
+A node you are _not_ on is not a dependency, so its tasks are hidden and block nothing; they return if you select that node again.
 
 ## Network Access and Interfaces
 
@@ -134,6 +138,7 @@ Chooses which Bitcoin Cash node Fulcrum indexes from. Run it when its task appea
 - **What it changes:** the selection in the store — and with it the declared dependency, the mounted volume, the RPC address, the credentials, and which node carries the configuration task.
 - **Cost:** the service restarts and reconnects.
 - **Repeat safety:** idempotent.
+- **Nothing is preselected** until a node has been chosen once; after that the form opens on the current node.
 - **On Flowee it also registers a credential** on that node, which is why its task comes from here rather than from the dependency setup.
 - **Switching nodes does not discard the index** if the new node is on the same chain — the index belongs to the chain, not the node.
 
@@ -144,13 +149,14 @@ Sets the server banner and Fulcrum's performance tunables.
 - **What it changes:** `banner.txt` and the tunable keys in `fulcrum.conf`.
 - **Cost:** applies on restart.
 - **Repeat safety:** idempotent.
+- **An empty banner deletes `banner.txt`**, so clients get Fulcrum's built-in banner.
 - **The database memory setting is the one that matters** on constrained hardware; the rest rarely need changing.
 
 ### Delete Chain Index — Maintenance group
 
 Deletes the index for a chosen chain.
 
-- **When to run it:** **only while stopped.**
+- **When to run it:** **only while stopped.** No chain is preselected.
 - **What it changes:** removes that chain's directory from the volume.
 - **Cost:** **the index has to be rebuilt from scratch** — hours to days on mainnet.
 - **Repeat safety:** idempotent, but destructive. Use it to reclaim space from a chain you no longer follow, or to recover from a corrupted index.
@@ -218,7 +224,7 @@ file_models:
   - banner.txt
   - store.json
 startos_managed_env_vars: [] # configuration is written into fulcrum.conf
-dependencies: # exactly one is required, whichever is selected
+dependencies: # all optional; exactly one is enabled, whichever is selected
   - bitcoincashd # health check: primary
   - bchd # health check: rpc-plaintext, not the native TLS RPC
   - flowee # health check: primary

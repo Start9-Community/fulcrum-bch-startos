@@ -18,16 +18,23 @@ Freshly scaffolded? Work the
 guide page, not a file in this repo — read it, don't copy it in.
 
 Keep `README.md` (technical reference for an AI support or administering agent) and
-`instructions.md` (end-user docs) in sync with your changes.
+`instructions.md` (end-user docs) in sync with your changes. This file restates neither:
+whoever changes the package has both, so it carries only what they don't — repo mechanics,
+a change that looks right and is not, where the next thing gets added, a naming trap, a
+build or test invocation particular to this repo.
 
-**Bugs and feature requests are GitHub issues on this repo** — file them as you find them.
+**Fix a defect you spot rather than reporting it** — you have the package open and the
+context to be sure. File **a GitHub issue on this repo** only when the call isn't yours to
+make: you can't pin the cause down, two defensible fixes exist, or it's too large to ride on
+the work in hand. An open issue is a report, not a queue — implement one when you're asked
+to or when it's labelled `Approved`, then close it with `Closes #<n>`.
+
 Don't record work in the repo instead: no `TODO.md`, no `NOTES.md`, no `PLAN.md`. What you
 verified, tried, and decided belongs in the commit message and the PR body.
 
 ## This repo
 
 - **This is the Bitcoin Cash Fulcrum, distinct from `fulcrum`, the Bitcoin one.** Don't copy changes between them without checking; their node backends and interface shapes differ.
-- **Dependencies are reached over the LXC bridge, never `.startos` DNS.** `startos/utils.ts` resolves each node's RPC with `sdk.host.getBridgeAddress(...).const()`. BCHN's RPC port moves per chain, so that `.const()` is also its chain-change signal; BCHD and Flowee pin one port for every chain, so the `sync-progress` health check re-reads the node's `store.json` and restarts on drift. **BCHD must be dialed through its plaintext proxy** (`rpc-plaintext`, 8334) so no self-signed certificate has to be trusted — dialing its native TLS RPC also meant carrying a per-chain port table, which was wrong on testnet4.
-- **BCHN does not export its host ids.** `bitcoin-cash-node-startos/startos/utils` exports `networkPorts` and the _interface_ ids but no `rpcHostId`, so the host id `'rpc'` is a literal in `startos/utils.ts`. Exporting it upstream would remove the literal.
-- **The chain follows the node and drives `datadir`.** `main` reads the chain off the node's read-only `/mnt/node` mount and points Fulcrum at `/data/<chain>`. A Fulcrum database refuses to open on a chain it was not built for, so these directories must never be merged. `NETWORKS` in `startos/utils.ts` is the single source for them — the backup excludes and the Delete Chain Index picker both derive from it, so adding a chain means adding it there.
-- **`fulcrum.conf` performance keys are deliberately optional.** Unset keys are omitted from the file so Fulcrum applies its own defaults; do not reintroduce `.catch(<number>)` defaults, which hard-code upstream's values into this package and go stale.
+- **Keep the chain re-read in the `sync-progress` health check.** A node's chain switch leaves its old RPC binding disabled, and a disabled binding still resolves, so the `.const()` bridge address never signals the switch. Dial BCHD through its `rpc-plaintext` proxy, never its native TLS RPC, which would need its self-signed certificate trusted. BCHN does not export its RPC host id, so `'rpc'` is a literal in `startos/utils.ts`.
+- **Add a chain in `NETWORKS` (`startos/utils.ts`) only.** The datadir, backup excludes and Delete Chain Index picker all derive from it; never merge two chains' directories, since a Fulcrum database refuses to open on another chain.
+- **Leave `fulcrum.conf`'s performance keys optional.** Unset keys are omitted so Fulcrum applies its own defaults; a `.catch(<number>)` hard-codes upstream's values here and goes stale.

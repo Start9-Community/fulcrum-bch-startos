@@ -26,8 +26,10 @@ export const deleteNetworkIndex = sdk.Action.withInput(
   InputSpec.of({
     network: Value.select({
       name: i18n('Chain'),
-      description: i18n('Which chain to delete the index for.'),
-      default: 'mainnet',
+      description: i18n(
+        "Only a chain Fulcrum has indexed has anything to delete. The index of the chain your node is on is rebuilt the next time Fulcrum starts; another chain's is rebuilt only if your node moves back to it.\n- Mainnet: the live Bitcoin Cash network\n- Testnet3: the legacy public test network\n- Testnet4: the lighter public test network\n- Scalenet: the public test network for high transaction throughput\n- Chipnet: the public test network where upcoming protocol upgrades activate early\n- Regtest: a private chain on this server only, for local testing",
+      ),
+      default: null,
       values: {
         mainnet: i18n('Mainnet'),
         testnet3: i18n('Testnet3'),
@@ -39,7 +41,7 @@ export const deleteNetworkIndex = sdk.Action.withInput(
     }),
   }),
 
-  async () => ({ network: 'mainnet' as const }),
+  async () => null,
 
   async ({ input }) => {
     const path = sdk.volumes.main.subpath(input.network)

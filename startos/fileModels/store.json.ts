@@ -2,7 +2,7 @@ import { FileHelper, z } from '@start9labs/start-sdk'
 import { sdk } from '../sdk'
 import { NODE_IDS } from '../utils'
 
-export const shape = z.object({
+export const shape = z.looseObject({
   nodePackageId: z.enum(NODE_IDS).catch('bitcoincashd'),
   nodeConfirmed: z.boolean().catch(false),
   syncNotified: z.boolean().catch(false),
