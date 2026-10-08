@@ -7,7 +7,7 @@ import { sdk } from '../sdk'
 // Seeds the Flowee credential exactly once and then leaves it alone, rather
 // than gating on `kind === 'install'`: the task that registers it on Flowee has
 // nothing to send without it, and it postdates installs that already exist.
-export const seedFiles = sdk.setupOnInit(async (effects) => {
+export const seedFiles = sdk.setupOnInit(async (effects, kind) => {
   const store = await storeJson.read().once()
 
   await storeJson.merge(effects, {
@@ -25,7 +25,7 @@ export const seedFiles = sdk.setupOnInit(async (effects) => {
 
   await fulcrumConf.merge(effects, {})
 
-  if ((await bannerTxt.read().once()) === null) {
+  if (kind === 'install') {
     await bannerTxt.write(
       effects,
       'Fulcrum | Fast Electrum Server for Bitcoin Cash\n',

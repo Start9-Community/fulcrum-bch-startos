@@ -8,7 +8,7 @@ const iniNumber = z
   .optional()
   .catch(undefined)
 
-export const shape = z.object({
+export const shape = z.looseObject({
   // Written by `main` on every run, from the chain the selected node reports.
   datadir: z.string().catch('/data/mainnet'),
   bitcoind: z.string().optional().catch(undefined),

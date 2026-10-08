@@ -25,9 +25,9 @@ export const selectNode = sdk.Action.withInput(
     nodePackageId: Value.select({
       name: i18n('Node Backend'),
       description: i18n(
-        'The node must be installed and fully synced before Fulcrum can index from it.',
+        'Choose the node you have installed. Fulcrum then raises a task on it:\n- Bitcoin Cash Node: turn pruning off and the transaction index and ZeroMQ on\n- Bitcoin Cash Daemon: turn pruning off and the transaction index on\n- Flowee the Hub: register the login Fulcrum uses',
       ),
-      default: 'bitcoincashd',
+      default: null,
       values: {
         bitcoincashd: i18n('Bitcoin Cash Node'),
         bchd: i18n('Bitcoin Cash Daemon'),
@@ -36,10 +36,10 @@ export const selectNode = sdk.Action.withInput(
     }),
   }),
 
-  async () => ({
-    nodePackageId:
-      (await storeJson.read().once())?.nodePackageId ?? 'bitcoincashd',
-  }),
+  async () => {
+    const store = await storeJson.read().once()
+    return store?.nodeConfirmed ? { nodePackageId: store.nodePackageId } : null
+  },
 
   async ({ effects, input }) => {
     // `main` reads this selection through a `.const()`, so writing it here is
@@ -53,8 +53,8 @@ export const selectNode = sdk.Action.withInput(
 
     // Flowee keeps only a hash of each RPC password and cannot hand one back,
     // so the credential Fulcrum dials it with is minted here and has to be
-    // registered there. Raised on selection rather than from
-    // `setupDependencies`, which re-runs on every init and would keep asking.
+    // registered there. Raised on selection rather than from the dependency's
+    // init, which re-runs on every init and would keep asking.
     const store = await storeJson.read().once()
     await sdk.action.createTask(
       effects,

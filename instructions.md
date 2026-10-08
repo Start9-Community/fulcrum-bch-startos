@@ -27,12 +27,12 @@ Fulcrum will not accept wallet connections until the index has caught up.
 
 Fulcrum serves the Electrum protocol on the **Electrum** interface. Copy its address from the Dashboard and give it to your wallet as a server, keeping the port that comes with it.
 
-The interface is plaintext TCP — if your wallet insists on encryption, or you are connecting from outside your LAN, use the Tor address instead.
+The interface is plaintext TCP, so a wallet that only connects over SSL cannot use it. To connect from outside your LAN, install Tor, add a Tor address to the **Electrum** interface, and give your wallet that address.
 
 ### Actions
 
 - **Select Node Backend** — change which node Fulcrum indexes from. Fulcrum restarts against the new node; if that node is on a different chain, the index for that chain is built from scratch.
-- **Configure** — set the banner your Electrum clients see on connect, and tune Fulcrum's RPC timeout, RPC client count, worker threads, database memory and open-file limit. Leave a field empty to let Fulcrum choose for itself.
+- **Configure** — set the banner your Electrum clients see on connect, and tune Fulcrum's RPC timeout, RPC client count, worker threads, database memory and open-file limit. Leave a field empty to let Fulcrum choose for itself; an empty banner gives clients Fulcrum's built-in one.
 - **Delete Chain Index** — free the disk one chain's index is using. Fulcrum has to be stopped first, because it holds the database open while it runs. The index is rebuilt the next time Fulcrum runs on that chain.
 
 ## Limitations
