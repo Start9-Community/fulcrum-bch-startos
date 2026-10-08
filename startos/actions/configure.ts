@@ -1,4 +1,5 @@
 import { utils } from '@start9labs/start-sdk'
+import { rm } from 'node:fs/promises'
 import { bannerTxt } from '../fileModels/banner.txt'
 import { fulcrumConf } from '../fileModels/fulcrum.conf'
 import { i18n } from '../i18n'
@@ -22,7 +23,7 @@ const inputSpec = InputSpec.of({
   bitcoind_timeout: Value.number({
     name: i18n('Node RPC Timeout (seconds)'),
     description: i18n(
-      'Controls how long Fulcrum waits for responses from the node before failing a request.',
+      'Raise this if the logs show "bitcoind request timed out", which can happen while the node is still syncing or under heavy load.',
     ),
     required: false,
     default: null,
@@ -32,7 +33,9 @@ const inputSpec = InputSpec.of({
   }),
   bitcoind_clients: Value.number({
     name: i18n('Node RPC Clients'),
-    description: i18n('Number of concurrent RPC connections to the node.'),
+    description: i18n(
+      'More clients can speed up the index build, but only if the node accepts as many concurrent RPC requests. Keep it at or below the number of CPU cores.',
+    ),
     required: false,
     default: null,
     integer: true,
@@ -42,7 +45,7 @@ const inputSpec = InputSpec.of({
   worker_threads: Value.number({
     name: i18n('Worker Threads (0 for auto)'),
     description: i18n(
-      'Set the number of Fulcrum worker threads. Use 0 to allow Fulcrum to choose automatically.',
+      '0 uses every CPU core, which keeps Fulcrum most responsive. Set a number to cap how much of the CPU Fulcrum can take.',
     ),
     required: false,
     default: null,
@@ -106,7 +109,12 @@ export const configure = sdk.Action.withInput(
 
   async ({ effects, input }) => {
     const { banner, ...conf } = input
-    if (banner) await bannerTxt.write(effects, banner)
+    // Fulcrum falls back to its built-in banner when the file is absent.
+    if (banner) {
+      await bannerTxt.write(effects, banner)
+    } else {
+      await rm(bannerTxt.path, { force: true })
+    }
     await fulcrumConf.merge(effects, utils.nullToUndefined(conf))
   },
 )
