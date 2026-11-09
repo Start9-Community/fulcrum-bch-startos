@@ -71,7 +71,7 @@ Three models. The config's fields split between pinned and tunable, and the stor
 | `banner.txt`   | text   | Yes — `FileHelper.string` | Install, and Configure        |
 | `store.json`   | JSON   | Yes — `FileHelper.json`   | Init and the actions          |
 
-**Pinned in the config:** the Electrum bind address, the banner path, and peering and announcement — both off, because a server behind StartOS's networking should not be advertising itself to the Electrum peer network. TLS is pinned _off_ toward the node, since the package dials plaintext bindings on purpose.
+**Pinned in the config:** the Electrum bind addresses (IPv4 and IPv6), the banner path, and peering and announcement — both off, because a server behind StartOS's networking should not be advertising itself to the Electrum peer network. TLS is pinned _off_ toward the node, since the package dials plaintext bindings on purpose.
 
 **Written by the package:** the data directory (which chain), the node address, and the RPC credentials.
 

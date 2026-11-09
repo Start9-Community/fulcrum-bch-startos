@@ -14,7 +14,13 @@ export const shape = z.looseObject({
   bitcoind: z.string().optional().catch(undefined),
   rpcuser: z.string().catch(''),
   rpcpassword: z.string().catch(''),
-  tcp: z.literal(`0.0.0.0:${electrumPort}`).catch(`0.0.0.0:${electrumPort}`),
+  // `:::` not `[::]:`: the ini writer quotes a leading `[`, and Fulcrum splits the port at the last colon.
+  tcp: z
+    .tuple([
+      z.literal(`0.0.0.0:${electrumPort}`),
+      z.literal(`:::${electrumPort}`),
+    ])
+    .catch([`0.0.0.0:${electrumPort}`, `:::${electrumPort}`]),
   peering: z.literal(false).catch(false),
   announce: z.literal(false).catch(false),
   bitcoind_timeout: iniNumber,
@@ -36,4 +42,5 @@ export const fulcrumConf = FileHelper.ini(
     subpath: 'fulcrum.conf',
   },
   shape,
+  { bracketedArray: false },
 )
