@@ -1,13 +1,17 @@
 import { IMPOSSIBLE, VersionInfo } from '@start9labs/start-sdk'
 
 export const current = VersionInfo.of({
-  version: '2.1.1:20',
+  version: '2.1.1:21',
   releaseNotes: {
-    en_US: `- Wallets can now connect over the server's IPv6 addresses.`,
-    es_ES: `- Las carteras ahora pueden conectarse a través de las direcciones IPv6 del servidor.`,
-    de_DE: `- Wallets können sich jetzt über die IPv6-Adressen des Servers verbinden.`,
-    pl_PL: `- Portfele mogą teraz łączyć się przez adresy IPv6 serwera.`,
-    fr_FR: `- Les portefeuilles peuvent désormais se connecter via les adresses IPv6 du serveur.`,
+    en_US: 'Fixes a case where Fulcrum could stop responding until restarted.',
+    es_ES:
+      'Corrige un caso en el que Fulcrum podía dejar de responder hasta reiniciarlo.',
+    de_DE:
+      'Behebt einen Fall, in dem Fulcrum bis zu einem Neustart nicht mehr reagieren konnte.',
+    pl_PL:
+      'Naprawia przypadek, w którym Fulcrum mógł przestać odpowiadać aż do ponownego uruchomienia.',
+    fr_FR:
+      'Corrige un cas où Fulcrum pouvait cesser de répondre jusqu’à son redémarrage.',
   },
   migrations: {
     up: async ({ effects }) => {},
