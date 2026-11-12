@@ -124,6 +124,8 @@ export const main = sdk.setupMain(async ({ effects }) => {
             lastSyncLog = text.slice(prefix.length).trim()
           }
         },
+        // Until start-sdk 4.1.0, onStdout alone pipes stderr too, and unread it fills and blocks Fulcrum.
+        onStderr: (chunk) => process.stderr.write(chunk),
       },
       ready: {
         display: i18n('Electrum'),
