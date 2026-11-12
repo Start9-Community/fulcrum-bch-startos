@@ -8,6 +8,7 @@ import {
   nodeMountpoint,
   nodeNetwork,
   nodeRpcBridge,
+  stdoutLines,
 } from './utils'
 
 /** The fields `main` reads out of the selected node's own `store.json`. */
@@ -111,21 +112,20 @@ export const main = sdk.setupMain(async ({ effects }) => {
     .addDaemon('primary', {
       subcontainer: primarySub,
       exec: {
-        command: ['Fulcrum', '--ts-format', 'none', '/data/fulcrum.conf'],
-        onStdout: (chunk) => {
-          const text = Buffer.isBuffer(chunk)
-            ? chunk.toString('utf8')
-            : String(chunk)
-
-          console.log(text)
-
-          const prefix = '<Controller>'
-          if (text.startsWith(prefix)) {
-            lastSyncLog = text.slice(prefix.length).trim()
+        // The SDK calls fn on every respawn, so a restarted Fulcrum reports no stale sync line.
+        fn: async () => {
+          lastSyncLog = null
+          return {
+            command: ['Fulcrum', '--ts-format', 'none', '/data/fulcrum.conf'],
+            onStdout: stdoutLines((line) => {
+              if (line.startsWith('<Controller>')) {
+                lastSyncLog = line.slice('<Controller>'.length).trim()
+              }
+            }),
+            // Until start-sdk 4.1.0, onStdout alone pipes stderr too, and unread it fills and blocks Fulcrum.
+            onStderr: (chunk: Buffer | string) => process.stderr.write(chunk),
           }
         },
-        // Until start-sdk 4.1.0, onStdout alone pipes stderr too, and unread it fills and blocks Fulcrum.
-        onStderr: (chunk) => process.stderr.write(chunk),
       },
       ready: {
         display: i18n('Electrum'),
