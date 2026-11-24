@@ -93,8 +93,6 @@ Three are declared, all optional, and **exactly one is enabled at a time** — w
 | Bitcoin Cash Daemon | `0.22.2:8`      | `rpc-plaintext`       | It serves RPC over its own self-signed TLS, so the package dials its plaintext proxy instead — that proxy is what has to be up |
 | Flowee the Hub      | `2026.5.2:19`   | `primary`             | Its RPC                                                                                                                        |
 
-**Each floor is the node's first build that publishes `rpc.json` on its `public` volume.** Against an older node Fulcrum cannot learn the chain or the login.
-
 **None of them gate on the node's sync progress, deliberately.** Fulcrum indexes to whatever height the node has reached and follows it from there, so requiring a fully-synced node would keep this service unstartable — and its own progress unreadable — for the days a fresh chain takes.
 
 **Each node needs to be unpruned with a full transaction index**, and the package raises a recurring task on that node's own page to arrange it. On BCHN it also turns ZeroMQ on, which is upstream's recommendation rather than a requirement — so it is applied when the task runs but does not by itself keep the task raised.
@@ -183,7 +181,7 @@ Two checks.
 | `primary`       | "Electrum"      | The Electrum port is listening  |
 | `sync-progress` | "Sync Progress" | Fulcrum's own indexing progress |
 
-**When the selected node is not installed, or too old to publish `rpc.json`, Fulcrum does not start.** The service shows a single failing "Node" check saying so instead, and comes up on its own once the node publishes.
+**When the selected node is not installed, Fulcrum does not start.** The service shows a single failing "Node" check saying so instead, and comes up on its own once the node publishes.
 
 **"Electrum" goes green long before the server is useful.** Fulcrum binds its port early and indexes afterwards, so a wallet connecting during the initial index gets a server that answers and has no history for it. "Sync Progress" is the one to read.
 
