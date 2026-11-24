@@ -9,8 +9,7 @@ export const shape = z.looseObject({
   // Flowee authenticates against hashed `rpcauth` entries and cannot hand a
   // password back out, so the credential Fulcrum dials it with is minted here
   // and registered on Flowee by the Select Node Backend action. BCHN and BCHD
-  // publish their own credentials in their `store.json`, which `main` reads off
-  // the mounted node volume — nothing to keep here for them.
+  // publish their own on their `public` volume — nothing to keep here for them.
   floweeRpcUser: z.string().catch(''),
   floweeRpcPassword: z.string().catch(''),
 })

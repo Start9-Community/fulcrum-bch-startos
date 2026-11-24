@@ -3,7 +3,7 @@ export const DEFAULT_LANG = 'en_US'
 const dict = {
   // main.ts
   'Starting Fulcrum BCH': 0,
-  'Could not read the settings of the selected node. Assuming mainnet until it reports otherwise.': 1,
+  'The ${node} node is not installed, or is too old to share its network and RPC login. Install or update it, then start it.': 1,
   'The selected node reports an unrecognized chain: ${chain}.': 2,
   'The selected node is not reachable yet. Fulcrum will connect once it is installed and running.': 3,
   Electrum: 4,
@@ -11,7 +11,6 @@ const dict = {
   'The Electrum interface is not ready': 6,
   'Electrum interface not ready while syncing...': 7,
   'Sync Progress': 8,
-  'The node switched from ${from} to ${to}. Restarting.': 9,
   'Fulcrum is synced': 10,
   'Unknown status': 11,
   'Sync Complete': 12,
@@ -67,6 +66,7 @@ const dict = {
   'Fulcrum has no index for ${chain}.': 56,
   'Index Deleted': 57,
   'The ${chain} index is gone. Fulcrum rebuilds it the next time it runs on that chain.': 58,
+  Node: 59,
 } as const
 
 export type I18nKey = keyof typeof dict
