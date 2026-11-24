@@ -1,5 +1,5 @@
 import { StringDecoder } from 'string_decoder'
-import { T } from '@start9labs/start-sdk'
+import { FileHelper, T, z } from '@start9labs/start-sdk'
 import {
   rpcPlaintextHostId as bchdRpcHostId,
   rpcPlaintextPort as bchdRpcPort,
@@ -15,16 +15,50 @@ export const electrumPort = 50001
 export const electrumHostId = 'main'
 export const electrumInterfaceId = 'electrum'
 
-/**
- * Where the selected node's `main` volume is mounted, read-only, in the primary
- * subcontainer. Fulcrum never reads the chain off disk — the mount exists so
- * `main` can read the node's `store.json` for the chain it is on and, on BCHN
- * and BCHD, its RPC credentials.
- */
-export const nodeMountpoint = '/mnt/node'
-
 export const NODE_IDS = ['bitcoincashd', 'bchd', 'flowee'] as const
 export type NodeId = (typeof NODE_IDS)[number]
+
+/** Where the selected node's `public` `rpc/` directory is mounted, read-only, in this package's own container. */
+const nodeRpcMountpoint = '/mnt/node-rpc'
+
+const nodeRpcJson = FileHelper.json(
+  `${nodeRpcMountpoint}/rpc.json`,
+  z.looseObject({
+    network: z.string().optional().catch(undefined),
+    rpcUser: z.string().optional().catch(undefined),
+    rpcPassword: z.string().optional().catch(undefined),
+  }),
+)
+
+/**
+ * The chain the selected node is on and, on BCHN and BCHD, its RPC login, as
+ * the node publishes them on its `public` volume. A `.const()` read, so a
+ * change re-runs `main`; `null` while the node is absent or too old to publish.
+ */
+export const readNodeRpc = async (effects: T.Effects, node: NodeId) => {
+  try {
+    await sdk.mount(effects, {
+      location: nodeRpcMountpoint,
+      // The node packages publish this layout but don't export its ids.
+      target: {
+        packageId: node,
+        volumeId: 'public',
+        subpath: 'rpc',
+        readonly: true,
+        idmap: [],
+      },
+    })
+  } catch {
+    return null
+  }
+  return nodeRpcJson
+    .read(({ network, rpcUser, rpcPassword }) => ({
+      network,
+      rpcUser,
+      rpcPassword,
+    }))
+    .const(effects)
+}
 
 /**
  * The chains a node can report. A Fulcrum database belongs to exactly one of

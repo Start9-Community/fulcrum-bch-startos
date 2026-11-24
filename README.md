@@ -48,16 +48,16 @@ One upstream image, consumed unmodified.
 
 ## Volume and Data Layout
 
-One volume, plus a read-only view of the selected node's.
+One volume, plus a read-only view of what the selected node publishes for its dependents.
 
-| Volume                 | Mount Point | Purpose                                    |
-| ---------------------- | ----------- | ------------------------------------------ |
-| `main`                 | `/data`     | One index per chain, the config, the store |
-| The node's `main` (ro) | `/mnt/node` | The node's own settings and credentials    |
+| Volume                        | Mount Point                        | Purpose                                        |
+| ----------------------------- | ---------------------------------- | ---------------------------------------------- |
+| `main`                        | `/data`                            | One index per chain, the config, the store     |
+| The node's `public/rpc/` (ro) | `/mnt/node-rpc`, package code only | `rpc.json`: the node's chain and its RPC login |
 
 **Each chain gets its own directory** under the volume. A Fulcrum database belongs to exactly one chain and it refuses to open one built for another, so switching chains never discards an index — the previous one is still there when you switch back.
 
-**Fulcrum never reads the chain off disk.** The node mount exists so the package can read the node's own state file: which chain it is on, and — on two of the three nodes — the RPC credentials to dial it with. Everything else comes over RPC.
+**Fulcrum never reads the chain off disk.** The node mount exists so the package can read `rpc.json`, which the node keeps current: which chain it is on, and — on two of the three nodes — the RPC credentials to dial it with. Nothing else of the node's is mounted, and Fulcrum itself sees none of it; everything else comes over RPC. The read is reactive, so a node that switches chains or changes its RPC login restarts Fulcrum onto it.
 
 The index is tens of gigabytes on mainnet, and is excluded from backups — see [Backups and Restore](#backups-and-restore).
 
@@ -81,7 +81,7 @@ Three models. The config's fields split between pinned and tunable, and the stor
 
 **The node address is omitted rather than defaulted when the node is absent.** Fulcrum then has no node line at all instead of one pointing somewhere that cannot answer, and the reactive read heals it in when the node appears.
 
-`store.json` holds the selected node, whether that selection has been confirmed, a notification flag, and **a Flowee credential**. That last one is there because of an asymmetry between the nodes: BCHN and BCHD publish their own credentials in their state files, which the package reads off the mount, while **Flowee authenticates against hashed entries and cannot hand a password back** — so the package mints one here and registers it on Flowee instead.
+`store.json` holds the selected node, whether that selection has been confirmed, a notification flag, and **a Flowee credential**. That last one is there because of an asymmetry between the nodes: BCHN and BCHD publish their own credentials in `rpc.json`, which the package reads off the mount, while **Flowee authenticates against hashed entries and cannot hand a password back** — so the package mints one here and registers it on Flowee instead.
 
 ## Dependencies
 
@@ -89,11 +89,11 @@ Three are declared, all optional, and **exactly one is enabled at a time** — w
 
 | Node                | Minimum version | Health check required | Why that check                                                                                                                 |
 | ------------------- | --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Bitcoin Cash Node   | `29.0.0:11`     | `primary`             | Its RPC                                                                                                                        |
-| Bitcoin Cash Daemon | `0.22.2:0`      | `rpc-plaintext`       | It serves RPC over its own self-signed TLS, so the package dials its plaintext proxy instead — that proxy is what has to be up |
-| Flowee the Hub      | `2026.5.2:12`   | `primary`             | Its RPC                                                                                                                        |
+| Bitcoin Cash Node   | `29.0.0:17`     | `primary`             | Its RPC                                                                                                                        |
+| Bitcoin Cash Daemon | `0.22.2:8`      | `rpc-plaintext`       | It serves RPC over its own self-signed TLS, so the package dials its plaintext proxy instead — that proxy is what has to be up |
+| Flowee the Hub      | `2026.5.2:19`   | `primary`             | Its RPC                                                                                                                        |
 
-**Bitcoin Cash Node's floor is the first build that rebinds its RPC port when its chain changes**; on an older one, the port Fulcrum dials after a chain switch has no binding until the node is rebuilt.
+**Each floor is the node's first build that publishes `rpc.json` on its `public` volume.** Against an older node Fulcrum cannot learn the chain or the login.
 
 **None of them gate on the node's sync progress, deliberately.** Fulcrum indexes to whatever height the node has reached and follows it from there, so requiring a fully-synced node would keep this service unstartable — and its own progress unreadable — for the days a fresh chain takes.
 
@@ -218,7 +218,7 @@ architectures:
 subcontainers:
   - primary-sub
 volumes:
-  main: /data # one index directory per chain; the node's volume is mounted read-only at /mnt/node
+  main: /data # one index directory per chain; the node's public/rpc is mounted read-only at /mnt/node-rpc in the package container
 file_models:
   - fulcrum.conf
   - banner.txt

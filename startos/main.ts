@@ -5,14 +5,11 @@ import { sdk } from './sdk'
 import {
   electrumPort,
   networkDir,
-  nodeMountpoint,
   nodeNetwork,
   nodeRpcBridge,
+  readNodeRpc,
   stdoutLines,
 } from './utils'
-
-/** The fields `main` reads out of the selected node's own `store.json`. */
-type NodeStore = { network?: string; rpcUser?: string; rpcPassword?: string }
 
 export const main = sdk.setupMain(async ({ effects }) => {
   console.info(i18n('Starting Fulcrum BCH'))
@@ -25,44 +22,24 @@ export const main = sdk.setupMain(async ({ effects }) => {
   const primarySub = await sdk.SubContainer.of(
     effects,
     { imageId: 'main' },
-    sdk.Mounts.of()
-      .mountVolume({
-        volumeId: 'main',
-        subpath: null,
-        mountpoint: '/data',
-        readonly: false,
-      })
-      .mountDependency({
-        dependencyId: node,
-        volumeId: 'main',
-        subpath: null,
-        mountpoint: nodeMountpoint,
-        readonly: true,
-      }),
+    sdk.Mounts.of().mountVolume({
+      volumeId: 'main',
+      subpath: null,
+      mountpoint: '/data',
+      readonly: false,
+    }),
     'primary-sub',
   )
 
-  const readNodeStore = async (): Promise<NodeStore | null> => {
-    const res = await primarySub
-      .exec(['cat', `${nodeMountpoint}/store.json`])
-      .catch(() => null)
-    if (!res || res.exitCode !== 0) return null
-    try {
-      return JSON.parse(res.stdout.toString()) as NodeStore
-    } catch {
-      return null
-    }
-  }
-
-  const nodeStore = await readNodeStore()
-  if (!nodeStore) {
+  const nodeRpc = await readNodeRpc(effects, node)
+  if (!nodeRpc) {
     console.warn(
       i18n(
         'Could not read the settings of the selected node. Assuming mainnet until it reports otherwise.',
       ),
     )
   }
-  const reported = nodeStore?.network ?? 'mainnet'
+  const reported = nodeRpc?.network ?? 'mainnet'
   const network = nodeNetwork(reported)
   if (!network) {
     throw new Error(
@@ -90,8 +67,8 @@ export const main = sdk.setupMain(async ({ effects }) => {
           rpcpassword: store?.floweeRpcPassword ?? '',
         }
       : {
-          rpcuser: nodeStore?.rpcUser ?? node,
-          rpcpassword: nodeStore?.rpcPassword ?? '',
+          rpcuser: nodeRpc?.rpcUser ?? node,
+          rpcpassword: nodeRpc?.rpcPassword ?? '',
         }
 
   const datadir = networkDir(network)
@@ -160,22 +137,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
       ready: {
         display: i18n('Sync Progress'),
         fn: async () => {
-          // The node's chain is a file, not a reactive source, so a change is
-          // noticed here — for every node, BCHN included: the binding it moves
-          // off a chain is left disabled, and a disabled binding still
-          // resolves, so the bridge address above never goes null.
-          const current = (await readNodeStore())?.network
-          if (current && nodeNetwork(current) !== network) {
-            console.info(
-              i18n('The node switched from ${from} to ${to}. Restarting.', {
-                from: network,
-                to: current,
-              }),
-            )
-            await effects.restart()
-            return { result: 'loading', message: null } as const
-          }
-
           const fulcrumReady = await sdk.healthCheck.checkPortListening(
             effects,
             electrumPort,

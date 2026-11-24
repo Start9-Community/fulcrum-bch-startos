@@ -11,7 +11,6 @@ const dict = {
   'The Electrum interface is not ready': 6,
   'Electrum interface not ready while syncing...': 7,
   'Sync Progress': 8,
-  'The node switched from ${from} to ${to}. Restarting.': 9,
   'Fulcrum is synced': 10,
   'Unknown status': 11,
   'Sync Complete': 12,
