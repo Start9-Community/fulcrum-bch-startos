@@ -5,14 +5,11 @@ import { sdk } from './sdk'
 import {
   electrumPort,
   networkDir,
-  nodeMountpoint,
   nodeNetwork,
   nodeRpcBridge,
+  readNodeRpc,
   stdoutLines,
 } from './utils'
-
-/** The fields `main` reads out of the selected node's own `store.json`. */
-type NodeStore = { network?: string; rpcUser?: string; rpcPassword?: string }
 
 export const main = sdk.setupMain(async ({ effects }) => {
   console.info(i18n('Starting Fulcrum BCH'))
@@ -22,47 +19,26 @@ export const main = sdk.setupMain(async ({ effects }) => {
   const store = await storeJson.read().const(effects)
   const node = store?.nodePackageId ?? 'bitcoincashd'
 
-  const primarySub = await sdk.SubContainer.of(
-    effects,
-    { imageId: 'main' },
-    sdk.Mounts.of()
-      .mountVolume({
-        volumeId: 'main',
-        subpath: null,
-        mountpoint: '/data',
-        readonly: false,
-      })
-      .mountDependency({
-        dependencyId: node,
-        volumeId: 'main',
-        subpath: null,
-        mountpoint: nodeMountpoint,
-        readonly: true,
-      }),
-    'primary-sub',
-  )
-
-  const readNodeStore = async (): Promise<NodeStore | null> => {
-    const res = await primarySub
-      .exec(['cat', `${nodeMountpoint}/store.json`])
-      .catch(() => null)
-    if (!res || res.exitCode !== 0) return null
-    try {
-      return JSON.parse(res.stdout.toString()) as NodeStore
-    } catch {
-      return null
-    }
+  const nodeRpc = await readNodeRpc(effects, node)
+  if (!nodeRpc) {
+    return sdk.Daemons.of(effects).addHealthCheck('node', {
+      ready: {
+        display: i18n('Node'),
+        gracePeriod: 0,
+        trigger: sdk.trigger.onceTrigger,
+        fn: async () =>
+          ({
+            result: 'failure',
+            message: i18n(
+              'The ${node} node is not installed, or is too old to share its network and RPC login. Install or update it, then start it.',
+              { node },
+            ),
+          }) as const,
+      },
+      requires: [],
+    })
   }
-
-  const nodeStore = await readNodeStore()
-  if (!nodeStore) {
-    console.warn(
-      i18n(
-        'Could not read the settings of the selected node. Assuming mainnet until it reports otherwise.',
-      ),
-    )
-  }
-  const reported = nodeStore?.network ?? 'mainnet'
+  const reported = nodeRpc.network
   const network = nodeNetwork(reported)
   if (!network) {
     throw new Error(
@@ -71,6 +47,18 @@ export const main = sdk.setupMain(async ({ effects }) => {
       }),
     )
   }
+
+  const primarySub = await sdk.SubContainer.of(
+    effects,
+    { imageId: 'main' },
+    sdk.Mounts.of().mountVolume({
+      volumeId: 'main',
+      subpath: null,
+      mountpoint: '/data',
+      readonly: false,
+    }),
+    'primary-sub',
+  )
 
   const bitcoind = await nodeRpcBridge(effects, node, network)
   if (!bitcoind) {
@@ -83,15 +71,16 @@ export const main = sdk.setupMain(async ({ effects }) => {
 
   // Flowee keeps only a hash of each RPC password, so the credential it is
   // dialed with is the one this package minted and registered on it.
+  // Fulcrum reads these from its environment, which keeps them out of `fulcrum.conf` and the backup.
   const credentials =
     node === 'flowee'
       ? {
-          rpcuser: store?.floweeRpcUser ?? '',
-          rpcpassword: store?.floweeRpcPassword ?? '',
+          RPCUSER: store?.floweeRpcUser ?? '',
+          RPCPASSWORD: store?.floweeRpcPassword ?? '',
         }
       : {
-          rpcuser: nodeStore?.rpcUser ?? node,
-          rpcpassword: nodeStore?.rpcPassword ?? '',
+          RPCUSER: nodeRpc.rpcUser ?? node,
+          RPCPASSWORD: nodeRpc.rpcPassword ?? '',
         }
 
   const datadir = networkDir(network)
@@ -102,7 +91,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
     // An absent node is left absent rather than pointed at an address that
     // cannot answer; the bridge read heals when it returns.
     bitcoind: bitcoind ?? undefined,
-    ...credentials,
   })
 
   let lastSyncLog: string | null = null
@@ -117,6 +105,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
           lastSyncLog = null
           return {
             command: ['Fulcrum', '--ts-format', 'none', '/data/fulcrum.conf'],
+            env: credentials,
             onStdout: stdoutLines((line) => {
               if (line.startsWith('<Controller>')) {
                 lastSyncLog = line.slice('<Controller>'.length).trim()
@@ -160,22 +149,6 @@ export const main = sdk.setupMain(async ({ effects }) => {
       ready: {
         display: i18n('Sync Progress'),
         fn: async () => {
-          // The node's chain is a file, not a reactive source, so a change is
-          // noticed here — for every node, BCHN included: the binding it moves
-          // off a chain is left disabled, and a disabled binding still
-          // resolves, so the bridge address above never goes null.
-          const current = (await readNodeStore())?.network
-          if (current && nodeNetwork(current) !== network) {
-            console.info(
-              i18n('The node switched from ${from} to ${to}. Restarting.', {
-                from: network,
-                to: current,
-              }),
-            )
-            await effects.restart()
-            return { result: 'loading', message: null } as const
-          }
-
           const fulcrumReady = await sdk.healthCheck.checkPortListening(
             effects,
             electrumPort,
