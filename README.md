@@ -50,10 +50,10 @@ One upstream image, consumed unmodified.
 
 One volume, plus a read-only view of what the selected node publishes for its dependents.
 
-| Volume                        | Mount Point                        | Purpose                                        |
-| ----------------------------- | ---------------------------------- | ---------------------------------------------- |
-| `main`                        | `/data`                            | One index per chain, the config, the store     |
-| The node's `public/rpc/` (ro) | `/mnt/node-rpc`, package code only | `rpc.json`: the node's chain and its RPC login |
+| Volume                   | Mount Point                           | Purpose                                            |
+| ------------------------ | ------------------------------------- | -------------------------------------------------- |
+| `main`                   | `/data`                               | One index per chain, the config, the store         |
+| The node's `public` (ro) | `/mnt/node-public`, package code only | `rpc/rpc.json`: the node's chain and its RPC login |
 
 **Each chain gets its own directory** under the volume. A Fulcrum database belongs to exactly one chain and it refuses to open one built for another, so switching chains never discards an index — the previous one is still there when you switch back.
 
@@ -73,7 +73,7 @@ Three models. The config's fields split between pinned and tunable, and the stor
 
 **Pinned in the config:** the Electrum bind addresses (IPv4 and IPv6), the banner path, and peering and announcement — both off, because a server behind StartOS's networking should not be advertising itself to the Electrum peer network. TLS is pinned _off_ toward the node, since the package dials plaintext bindings on purpose.
 
-**Written by the package:** the data directory (which chain), the node address, and the RPC credentials.
+**Written by the package:** the data directory (which chain) and the node address. The RPC login is not in the config: the package hands it to Fulcrum in its environment (`RPCUSER`, `RPCPASSWORD`), so it never lands in `fulcrum.conf` or the backup.
 
 **`banner.txt` is seeded at install.** Configure with the banner left empty deletes it, and Fulcrum then serves its built-in banner (`Connected to a Fulcrum … server`).
 
@@ -183,6 +183,8 @@ Two checks.
 | `primary`       | "Electrum"      | The Electrum port is listening  |
 | `sync-progress` | "Sync Progress" | Fulcrum's own indexing progress |
 
+**When the selected node is not installed, or too old to publish `rpc.json`, Fulcrum does not start.** The service shows a single failing "Node" check saying so instead, and comes up on its own once the node publishes.
+
 **"Electrum" goes green long before the server is useful.** Fulcrum binds its port early and indexes afterwards, so a wallet connecting during the initial index gets a server that answers and has no history for it. "Sync Progress" is the one to read.
 
 ## Backups and Restore
@@ -193,7 +195,7 @@ So the backup is the configuration, the banner, and the node selection — kilob
 
 **A restored instance re-indexes from scratch**, taking the same hours to days a fresh install does, and nothing depending on it works until that finishes. That is the deliberate trade; backing up a live index would be both enormous and unsafe to restore.
 
-The Flowee credential is in the backup, so a restored install still authenticates against a Flowee that was registered before.
+The Flowee credential is in the backup, so a restored install still authenticates against a Flowee that was registered before. A BCHN or BCHD login is not: it is read from the node on every start.
 
 ## Limitations and Differences
 
@@ -218,12 +220,12 @@ architectures:
 subcontainers:
   - primary-sub
 volumes:
-  main: /data # one index directory per chain; the node's public/rpc is mounted read-only at /mnt/node-rpc in the package container
+  main: /data # one index directory per chain; the node's public volume is mounted read-only at /mnt/node-public in the package container
 file_models:
   - fulcrum.conf
   - banner.txt
   - store.json
-startos_managed_env_vars: [] # configuration is written into fulcrum.conf
+startos_managed_env_vars: [RPCUSER, RPCPASSWORD] # the node's RPC login; everything else is fulcrum.conf
 dependencies: # all optional; exactly one is enabled, whichever is selected
   - bitcoincashd # health check: primary
   - bchd # health check: rpc-plaintext, not the native TLS RPC

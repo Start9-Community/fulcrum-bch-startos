@@ -3,7 +3,7 @@ import { LangDict } from './default'
 export default {
   es_ES: {
     0: 'Iniciando Fulcrum BCH',
-    1: 'No se pudo leer la configuración del nodo seleccionado. Se asume mainnet hasta que indique lo contrario.',
+    1: 'El nodo ${node} no está instalado o es demasiado antiguo para compartir su red y su inicio de sesión RPC. Instálelo o actualícelo y luego inícielo.',
     2: 'El nodo seleccionado informa de una cadena no reconocida: ${chain}.',
     3: 'El nodo seleccionado aún no es accesible. Fulcrum se conectará cuando esté instalado y en ejecución.',
     4: 'Electrum',
@@ -60,10 +60,11 @@ export default {
     56: 'Fulcrum no tiene índice para ${chain}.',
     57: 'Índice eliminado',
     58: 'El índice de ${chain} ha desaparecido. Fulcrum lo reconstruye la próxima vez que se ejecute en esa cadena.',
+    59: 'Nodo',
   },
   de_DE: {
     0: 'Fulcrum BCH wird gestartet',
-    1: 'Die Einstellungen des ausgewählten Knotens konnten nicht gelesen werden. Es wird von Mainnet ausgegangen, bis er etwas anderes meldet.',
+    1: 'Der Knoten ${node} ist nicht installiert oder zu alt, um sein Netzwerk und seine RPC-Anmeldung bereitzustellen. Installieren oder aktualisieren Sie ihn und starten Sie ihn dann.',
     2: 'Der ausgewählte Knoten meldet eine unbekannte Chain: ${chain}.',
     3: 'Der ausgewählte Knoten ist noch nicht erreichbar. Fulcrum verbindet sich, sobald er installiert ist und läuft.',
     4: 'Electrum',
@@ -120,10 +121,11 @@ export default {
     56: 'Fulcrum hat keinen Index für ${chain}.',
     57: 'Index gelöscht',
     58: 'Der Index für ${chain} ist entfernt. Fulcrum baut ihn beim nächsten Lauf auf dieser Chain neu auf.',
+    59: 'Knoten',
   },
   pl_PL: {
     0: 'Uruchamianie Fulcrum BCH',
-    1: 'Nie udało się odczytać ustawień wybranego węzła. Zakładany jest mainnet, dopóki węzeł nie zgłosi inaczej.',
+    1: 'Węzeł ${node} nie jest zainstalowany lub jest zbyt stary, aby udostępniać swoją sieć i dane logowania RPC. Zainstaluj go lub zaktualizuj, a następnie uruchom.',
     2: 'Wybrany węzeł zgłasza nierozpoznany łańcuch: ${chain}.',
     3: 'Wybrany węzeł nie jest jeszcze osiągalny. Fulcrum połączy się, gdy zostanie zainstalowany i uruchomiony.',
     4: 'Electrum',
@@ -180,10 +182,11 @@ export default {
     56: 'Fulcrum nie ma indeksu dla ${chain}.',
     57: 'Indeks usunięty',
     58: 'Indeks ${chain} został usunięty. Fulcrum odbuduje go przy następnym uruchomieniu w tym łańcuchu.',
+    59: 'Węzeł',
   },
   fr_FR: {
     0: 'Démarrage de Fulcrum BCH',
-    1: "Impossible de lire les réglages du nœud sélectionné. Mainnet est supposé jusqu'à ce qu'il indique le contraire.",
+    1: 'Le nœud ${node} n’est pas installé ou est trop ancien pour partager son réseau et son identifiant RPC. Installez-le ou mettez-le à jour, puis démarrez-le.',
     2: 'Le nœud sélectionné signale une chaîne non reconnue : ${chain}.',
     3: "Le nœud sélectionné n'est pas encore joignable. Fulcrum s'y connectera dès qu'il sera installé et en cours d'exécution.",
     4: 'Electrum',
@@ -240,5 +243,6 @@ export default {
     56: "Fulcrum n'a pas d'index pour ${chain}.",
     57: 'Index supprimé',
     58: "L'index ${chain} a disparu. Fulcrum le reconstruit lors de sa prochaine exécution sur cette chaîne.",
+    59: 'Nœud',
   },
 } satisfies Record<string, LangDict>

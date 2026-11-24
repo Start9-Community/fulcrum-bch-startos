@@ -12,8 +12,6 @@ export const shape = z.looseObject({
   // Written by `main` on every run, from the chain the selected node reports.
   datadir: z.string().catch('/data/mainnet'),
   bitcoind: z.string().optional().catch(undefined),
-  rpcuser: z.string().catch(''),
-  rpcpassword: z.string().catch(''),
   // `:::` not `[::]:`: the ini writer quotes a leading `[`, and Fulcrum splits the port at the last colon.
   tcp: z
     .tuple([
@@ -34,6 +32,10 @@ export const shape = z.looseObject({
   // to be named to be dropped: whatever is on disk parses to undefined and the
   // next write omits it.
   bitcoind_tls: z.undefined().optional().catch(undefined),
+  // Written by versions up to 2.1.1:22; Fulcrum now takes its RPC login from
+  // the environment, and a value here would override it.
+  rpcuser: z.undefined().optional().catch(undefined),
+  rpcpassword: z.undefined().optional().catch(undefined),
 })
 
 export const fulcrumConf = FileHelper.ini(

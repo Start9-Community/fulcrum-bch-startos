@@ -1,5 +1,5 @@
 import { StringDecoder } from 'string_decoder'
-import { FileHelper, T, z } from '@start9labs/start-sdk'
+import { FileHelper, T, utils, z } from '@start9labs/start-sdk'
 import {
   rpcPlaintextHostId as bchdRpcHostId,
   rpcPlaintextPort as bchdRpcPort,
@@ -18,11 +18,11 @@ export const electrumInterfaceId = 'electrum'
 export const NODE_IDS = ['bitcoincashd', 'bchd', 'flowee'] as const
 export type NodeId = (typeof NODE_IDS)[number]
 
-/** Where the selected node's `public` `rpc/` directory is mounted, read-only, in this package's own container. */
-const nodeRpcMountpoint = '/mnt/node-rpc'
+/** Where the selected node's `public` volume is mounted, read-only, in this package's own container. */
+const nodePublicMountpoint = '/mnt/node-public'
 
 const nodeRpcJson = FileHelper.json(
-  `${nodeRpcMountpoint}/rpc.json`,
+  `${nodePublicMountpoint}/rpc/rpc.json`,
   z.looseObject({
     network: z.string().optional().catch(undefined),
     rpcUser: z.string().optional().catch(undefined),
@@ -32,32 +32,51 @@ const nodeRpcJson = FileHelper.json(
 
 /**
  * The chain the selected node is on and, on BCHN and BCHD, its RPC login, as
- * the node publishes them on its `public` volume. A `.const()` read, so a
- * change re-runs `main`; `null` while the node is absent or too old to publish.
+ * the node publishes them on its `public` volume — or `null` while it is not
+ * installed, predates `public`, or has not written them yet. Every read is
+ * `.const()`, so `main` re-runs the moment any of that changes.
  */
 export const readNodeRpc = async (effects: T.Effects, node: NodeId) => {
-  try {
-    await sdk.mount(effects, {
-      location: nodeRpcMountpoint,
-      // The node packages publish this layout but don't export its ids.
+  const publishes = await sdk
+    .getServiceManifest(effects, node, (m) => !!m?.volumes.includes('public'))
+    .const()
+  if (!publishes) return null
+  const mountPublic = () =>
+    sdk.mount(effects, {
+      location: nodePublicMountpoint,
+      // The node packages publish this volume but don't export its id.
       target: {
         packageId: node,
         volumeId: 'public',
-        subpath: 'rpc',
+        subpath: null,
         readonly: true,
         idmap: [],
       },
     })
+  try {
+    await mountPublic()
   } catch {
-    return null
+    // Subscribe before retrying, so a volume that appears in between still re-runs `main`.
+    await utils.Watchable.combine(
+      effects,
+      [sdk.getStatus(effects, { packageId: node })],
+      ([status]) =>
+        status ? { desired: status.desired, started: status.started } : null,
+    ).const()
+    try {
+      await mountPublic()
+    } catch {
+      return null
+    }
   }
-  return nodeRpcJson
+  const rpc = await nodeRpcJson
     .read(({ network, rpcUser, rpcPassword }) => ({
       network,
       rpcUser,
       rpcPassword,
     }))
     .const(effects)
+  return rpc?.network ? { ...rpc, network: rpc.network } : null
 }
 
 /**
